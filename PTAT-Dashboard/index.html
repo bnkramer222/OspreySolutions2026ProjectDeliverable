@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTAT Impact Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="dashboard">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <h2>PTAT</h2>
+
+            <nav>
+                <button>Dashboard</button>
+                <button>Pre-Survey</button>
+                <button>Post-Survey</button>
+                <button>Schools</button>
+                <button>Imports</button>
+            </nav>
+        </aside>
+
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <header>
+                <h1>Impact Dashboard</h1>
+                <p>Overview of imported PTAT data</p>
+            </header>
+
+
+            <!-- Upload Section -->
+            <section class="upload-section">
+
+                <h2>Import Data</h2>
+
+                <input type="file" id="fileInput">
+
+                <button id="uploadButton">
+                    Upload File
+                </button>
+
+            </section>
+
+
+            <!-- Latest Import -->
+            <section class="latest-import">
+
+                <h2>Latest Import</h2>
+
+                <p id="latestFile">
+                    No file uploaded yet.
+                </p>
+
+                <button id="viewLatestButton">
+                    View Latest File
+                </button>
+
+            </section>
+
+
+            <!-- Summary Cards -->
+            <section class="summary">
+
+                <div class="card">
+                    <h3>Total Records</h3>
+                    <p>1,248</p>
+                </div>
+
+                <div class="card">
+                    <h3>Schools</h3>
+                    <p>12</p>
+                </div>
+
+                <div class="card">
+                    <h3>Survey Types</h3>
+                    <p>2</p>
+                </div>
+
+            </section>
+
+        </main>
+
+    </div>
+
+    <script src="script.js"></script>
+
+</body>
+</html>
