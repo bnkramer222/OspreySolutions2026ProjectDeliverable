@@ -32,5 +32,3 @@ public/         CSS / images
 2. Add a function to your **controller** that calls it and renders a view
 3. Add a line to your **routes** file
 4. Add/edit your **view**
-
-Work on your own branch (`git checkout -b yourname-story#`) and open a pull request into `main`.
