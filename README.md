@@ -1,4 +1,4 @@
-# Planned to A.T. Impact Platform — Osprey Solutions
+# Planned to A.T. Impact Platform | Osprey Solutions
 
 Node.js + Express + EJS, organized as MVC.
 
