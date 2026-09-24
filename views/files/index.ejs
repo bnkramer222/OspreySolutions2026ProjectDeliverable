@@ -1,7 +1,8 @@
+<%# VIEW - File Management (Brandon) %>
 <%- include('../partials/header') %>
-<h1>Files</h1>
+<h1><%= title %></h1>
 
-<% [['pre', 'Pre-Survey', preFiles], ['post', 'Post-Survey', postFiles]].forEach(([type, label, files]) => { %>
+<% sections.forEach(({ type, label, files }) => { %>
   <section>
     <h2><%= label %></h2>
 
