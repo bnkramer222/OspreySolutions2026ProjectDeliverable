@@ -63,6 +63,12 @@ db.exec(`
         FOREIGN KEY (dataset_id) REFERENCES report_datasets(id) ON DELETE CASCADE,
         UNIQUE (dataset_id, row_index)
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    );
 `);
 
 module.exports = db;
