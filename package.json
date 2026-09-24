@@ -1,34 +1,18 @@
 {
-  "name": "ospreysolutionssummer2026",
-  "version": "1.0.0",
-  "description": "Project for our summer 2026 assignment",
+  "name": "ptat-impact-platform",
+  "version": "0.1.0",
+  "private": true,
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "test": "node --test"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/bnkramer222/OspreySolutionsSummer2026.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/bnkramer222/OspreySolutionsSummer2026/issues"
-  },
-  "homepage": "https://github.com/bnkramer222/OspreySolutionsSummer2026#readme",
-  "devDependencies": {
-    "@types/node": "^26.2.0",
-    "typescript": "^7.0.2"
+    "dev": "nodemon app.js"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
-    "csv-parse": "^7.0.2",
-    "express": "^5.2.1",
-    "express-session": "^1.19.0",
-    "multer": "^2.4.0",
-    "nodemon": "^3.1.14"
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "multer": "^2.4.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
   }
 }
