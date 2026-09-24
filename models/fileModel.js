@@ -1,12 +1,12 @@
 // MODEL - File Management (Brandon)
-// Uploaded files are stored on disk in uploads/pre and uploads/post.
+// Files are stored on disk in uploads/pre and uploads/post.
 const fs = require("fs");
 const path = require("path");
 
 const UPLOAD_DIR = path.join(__dirname, "..", "uploads");
 const TYPES = ["pre", "post"];
 
-// Make sure uploads/pre and uploads/post exist
+// Create the upload folders if they don't exist
 TYPES.forEach((type) =>
   fs.mkdirSync(path.join(UPLOAD_DIR, type), { recursive: true }),
 );
@@ -15,7 +15,7 @@ module.exports = {
   TYPES,
   UPLOAD_DIR,
 
-  // List files in the pre or post folder, newest first
+  // List files in a section, newest first
   getAll(type) {
     const dir = path.join(UPLOAD_DIR, type);
     return fs
@@ -27,7 +27,7 @@ module.exports = {
       .sort((a, b) => b.uploadedAt - a.uploadedAt);
   },
 
-  // Full path to one file (path.basename blocks "../" tricks)
+  // Full path to one file (basename blocks "../" tricks)
   getPath(type, name) {
     return path.join(UPLOAD_DIR, type, path.basename(name));
   },

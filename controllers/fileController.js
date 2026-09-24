@@ -2,21 +2,39 @@
 const fs = require("fs");
 const fileModel = require("../models/fileModel");
 
-// Show the Pre and Post sections with their uploaded files
+const LABELS = { pre: "Pre-Survey", post: "Post-Survey" };
+
+const buildSection = (type) => ({
+  type,
+  label: LABELS[type],
+  files: fileModel.getAll(type),
+});
+
+// GET /files - both sections
 exports.index = (req, res) => {
   res.render("files/index", {
     title: "Files",
-    preFiles: fileModel.getAll("pre"),
-    postFiles: fileModel.getAll("post"),
+    sections: fileModel.TYPES.map(buildSection),
   });
 };
 
-// Runs after multer has saved the file
-exports.upload = (req, res) => {
-  res.redirect("/files");
+// GET /files/pre or /files/post - one section
+exports.section = (req, res) => {
+  const type = req.params.type;
+  if (!fileModel.TYPES.includes(type))
+    return res.status(404).send("Page not found");
+  res.render("files/index", {
+    title: LABELS[type],
+    sections: [buildSection(type)],
+  });
 };
 
-// Open an uploaded file in the browser
+// POST /files/:type/upload - multer already saved the file
+exports.upload = (req, res) => {
+  res.redirect(`/files/${req.params.type}`);
+};
+
+// GET /files/:type/:name - open a file
 exports.view = (req, res) => {
   const filePath = fileModel.getPath(req.params.type, req.params.name);
   if (!fileModel.TYPES.includes(req.params.type) || !fs.existsSync(filePath)) {

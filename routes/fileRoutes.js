@@ -1,10 +1,11 @@
+// ROUTES - File Management (Brandon)
 const router = require("express").Router();
 const path = require("path");
 const multer = require("multer");
 const controller = require("../controllers/fileController");
 const fileModel = require("../models/fileModel");
 
-// Save uploads into uploads/pre or uploads/post, keeping the original name
+// Save uploads to uploads/pre or uploads/post; only allow CSV/Excel
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) =>
@@ -21,6 +22,7 @@ const upload = multer({
 });
 
 router.get("/", controller.index);
+router.get("/:type", controller.section);
 router.post("/:type/upload", upload.single("surveyFile"), controller.upload);
 router.get("/:type/:name", controller.view);
 
