@@ -1,4 +1,89 @@
+<%# VIEW - Report Generation (Joshua) %>
 <%- include('../partials/header') %>
-<h1>Reports</h1>
-<p>Report Generation goes here.</p>
+<link rel="stylesheet" href="/reports.css">
+
+<div class="report-page">
+  <h1>Reports</h1>
+  <p class="subtitle">Compare a pre-survey with a post-survey to see what changed.</p>
+
+  <form class="report-card report-form" action="/reports" method="GET">
+    <label>Pre-Survey file
+      <select name="pre" required>
+        <option value="">Choose a file</option>
+        <% preFiles.forEach((f) => { %>
+          <option value="<%= f.name %>" <%= selected.pre === f.name ? 'selected' : '' %>><%= f.name %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label>Post-Survey file
+      <select name="post" required>
+        <option value="">Choose a file</option>
+        <% postFiles.forEach((f) => { %>
+          <option value="<%= f.name %>" <%= selected.post === f.name ? 'selected' : '' %>><%= f.name %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <button type="submit">Generate Report</button>
+  </form>
+
+  <% if (preFiles.length === 0 || postFiles.length === 0) { %>
+    <p class="notice">Upload a CSV in both the <a href="/files/pre">Pre-Survey</a> and <a href="/files/post">Post-Survey</a> sections first.</p>
+  <% } %>
+
+  <% if (error) { %>
+    <p class="notice error"><%= error %></p>
+  <% } %>
+
+  <% if (report) { %>
+    <div class="stats">
+      <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
+      <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
+      <div class="report-card stat"><span class="stat-value"><%= report.matched %></span><span class="stat-label">Took both surveys</span></div>
+    </div>
+
+    <section class="report-card">
+      <div class="results-header">
+        <h2>Pre vs. Post</h2>
+        <div class="legend">
+          <span><i class="swatch pre"></i>Pre</span>
+          <span><i class="swatch post"></i>Post</span>
+        </div>
+      </div>
+
+      <% if (report.rows.length === 0) { %>
+        <p>No matching number or Yes/No questions found in these two files.</p>
+      <% } else { %>
+        <%
+          const fmt = (r, v) => (r.kind === 'percent' ? v.toFixed(0) + '% Yes' : v.toFixed(2));
+          const width = (r, v) => (r.scale > 0 ? (v / r.scale) * 100 : 0).toFixed(1);
+          const change = (r) => (r.change >= 0 ? '+' : '') + (r.kind === 'percent' ? r.change.toFixed(0) + ' pts' : r.change.toFixed(2));
+        %>
+        <% report.rows.forEach((r) => { %>
+          <div class="question">
+            <div class="question-top">
+              <span class="question-name"><%= r.column.replace(/_/g, ' ').replace(/(\d+)to(\d+)/, '($1–$2)') %></span>
+              <span class="change <%= r.change > 0 ? 'up' : r.change < 0 ? 'down' : '' %>">
+                <%= r.change > 0 ? '▲' : r.change < 0 ? '▼' : '■' %> <%= change(r) %>
+              </span>
+            </div>
+            <div class="bar-row" title="Pre: <%= fmt(r, r.pre) %>">
+              <span class="bar-label">Pre</span>
+              <div class="bar-track"><div class="bar pre" style="width: <%= width(r, r.pre) %>%"></div></div>
+              <span class="bar-value"><%= fmt(r, r.pre) %></span>
+            </div>
+            <div class="bar-row" title="Post: <%= fmt(r, r.post) %>">
+              <span class="bar-label">Post</span>
+              <div class="bar-track"><div class="bar post" style="width: <%= width(r, r.post) %>%"></div></div>
+              <span class="bar-value"><%= fmt(r, r.post) %></span>
+            </div>
+          </div>
+        <% }) %>
+        <p class="footnote">Numbers are averages; Yes/No questions show the percent who answered Yes.</p>
+      <% } %>
+    </section>
+  <% } %>
+</div>
+
 <%- include('../partials/footer') %>
