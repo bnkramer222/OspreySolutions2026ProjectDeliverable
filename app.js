@@ -1,20 +1,70 @@
-const express = require('express');
-const path = require('path');
+const express = require("express");
+const path = require("path");
+const session = require("express-session");
+const requireAuth = require("./middleware/requireAuth");
 
 const app = express();
 
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
-// Each module has its own routes file
-app.use('/account', require('./routes/accountRoutes'));
-app.use('/files', require('./routes/fileRoutes'));
-app.use('/dashboard', require('./routes/dashboardRoutes'));
-app.use('/reports', require('./routes/reportRoutes'));
+app.use(
+    session({
+        secret: "temporary-secret-key",
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+            httpOnly: true,
+            secure: false,
+            sameSite: "lax",
+            maxAge: 1000 * 60 * 60
+        }
+    })
+);
 
-app.get('/', (req, res) => res.redirect('/dashboard'));
+const authRoutes = require("./routes/authRoutes");
+app.use("/auth", authRoutes);
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Running at http://localhost:${PORT}`));
+const volunteerRoutes = require("./routes/volunteerRoutes");
+app.use("/volunteers", volunteerRoutes);
+
+const volunteerApi = require("./routes/volunteers");
+app.use("/api/volunteers", volunteerApi);
+
+
+
+const opportunityRoutes = require("./routes/opportunityRoutes");
+app.use("/opportunities", opportunityRoutes);
+
+const reportRoutes = require("./routes/reportRoutes");
+app.use("/api/report-datasets", reportRoutes);
+
+app.use("/public", express.static(path.join(__dirname, "public")));
+
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "views", "login.html"));
+});
+
+app.get("/volunteers", (req, res) => {
+    res.sendFile(path.join(__dirname, "views", "volunteers.html"));
+});
+
+app.get("/volunteer-form", (req, res) => {
+    res.sendFile(path.join(__dirname, "views", "volunteer-form.html"));
+});
+
+app.get("/dashboard", requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, "views", "dashboard.html"));
+});
+
+app.get("/reports", requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, "views", "reports.html"));
+});
+
+if (require.main === module) {
+    app.listen(3000, () => {
+        console.log("Server running at http://localhost:3000");
+    });
+}
+
+module.exports = app;

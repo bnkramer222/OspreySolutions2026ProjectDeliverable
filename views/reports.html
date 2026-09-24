@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports - VMS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; min-height: 100vh; color: #0a0a0a; }
+        nav { background: #0a0a0a; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; min-height: 64px; gap: 16px; }
+        .nav-logo { font-size: 20px; font-weight: 800; color: white; white-space: nowrap; }
+        .nav-logo span { color: #ff6b35; }
+        .nav-links { display: flex; gap: 8px; }
+        .nav-link { color: #999; text-decoration: none; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        .nav-link:hover { color: white; background: #ffffff15; }
+        .nav-link.active { color: #0a0a0a; background: #00d4ff; }
+        .nav-logout { background: #ffffff15; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-family: inherit; transition: background 0.2s; white-space: nowrap; }
+        .nav-logout:hover { background: #ff6b35; }
+        .page-header { background: #0a0a0a; padding: 40px; color: white; position: relative; overflow: hidden; }
+        .page-header::before { content: ''; position: absolute; top: -60px; right: -60px; width: 250px; height: 250px; background: #00d4ff; border-radius: 50%; opacity: 0.15; }
+        .page-header h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; position: relative; }
+        .page-header h1 span { color: #00d4ff; }
+        .page-header p { color: #999; margin-top: 6px; font-size: 14px; position: relative; }
+        .content { max-width: 1200px; margin: 0 auto; padding: 32px 40px 64px; }
+        .card { background: white; border-radius: 20px; padding: 28px; margin-bottom: 24px; }
+        .card h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+        .card-description { color: #666; font-size: 14px; line-height: 1.5; margin-bottom: 22px; }
+        .upload-form, .report-controls { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+        .field { flex: 1; min-width: 240px; }
+        label { display: block; font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 7px; }
+        input[type="file"], select { width: 100%; min-height: 46px; padding: 10px 12px; border: 2px solid #e5e5e5; border-radius: 12px; background: white; font: inherit; font-size: 14px; outline: none; }
+        input[type="file"]:focus, select:focus { border-color: #00d4ff; }
+        .help-text { color: #888; font-size: 12px; margin-top: 7px; }
+        .btn { min-height: 46px; padding: 11px 20px; border: none; border-radius: 12px; background: #0a0a0a; color: white; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.2s, opacity 0.2s; white-space: nowrap; }
+        .btn:hover:not(:disabled) { background: #00a9cc; }
+        .btn:disabled { cursor: not-allowed; opacity: 0.55; }
+        .message { margin-top: 16px; padding: 12px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+        .message.info { color: #075985; background: #e0f7ff; }
+        .message.success { color: #166534; background: #dcfce7; }
+        .message.error { color: #b91c1c; background: #fee2e2; }
+        .empty-state { text-align: center; padding: 34px 20px; color: #777; background: #fafafa; border: 2px dashed #e5e5e5; border-radius: 14px; margin-top: 20px; }
+        .empty-state .icon { display: block; font-size: 36px; margin-bottom: 8px; }
+        .report-card { padding: 0; overflow: hidden; }
+        .report-card-header { padding: 28px 28px 22px; border-bottom: 1px solid #eee; }
+        .report-summary { display: flex; gap: 10px 22px; flex-wrap: wrap; margin-top: 14px; color: #666; font-size: 13px; }
+        .report-summary strong { color: #0a0a0a; }
+        .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; min-width: 620px; }
+        th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
+        th { background: #0a0a0a; color: white; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; position: sticky; top: 0; }
+        tbody tr:nth-child(even) { background: #fafafa; }
+        tbody tr:hover { background: #eafaff; }
+        [hidden] { display: none !important; }
+
+        @media (max-width: 760px) {
+            nav { padding: 12px 20px; flex-wrap: wrap; }
+            .nav-links { order: 3; width: 100%; overflow-x: auto; padding-bottom: 2px; }
+            .nav-link { padding: 7px 11px; white-space: nowrap; }
+            .page-header { padding: 32px 20px; }
+            .page-header h1 { font-size: 28px; }
+            .content { padding: 24px 16px 48px; }
+            .card { padding: 22px 18px; border-radius: 16px; }
+            .report-card { padding: 0; }
+            .report-card-header { padding: 22px 18px; }
+            .field { min-width: 100%; }
+            .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="nav-logo">Osprey<span>VMS</span></div>
+        <div class="nav-links">
+            <a href="/dashboard" class="nav-link">Dashboard</a>
+            <a href="/volunteers" class="nav-link">Volunteers</a>
+            <a href="/opportunities" class="nav-link">Opportunities</a>
+            <a href="/reports" class="nav-link active">Reports</a>
+        </div>
+        <button class="nav-logout" onclick="window.location.href='/'">Log Out</button>
+    </nav>
+
+    <header class="page-header">
+        <h1>Dataset <span>Reports</span> 📊</h1>
+        <p>Upload structured data, select a dataset, and review every imported record.</p>
+    </header>
+
+    <main class="content">
+        <section class="card" aria-labelledby="upload-heading">
+            <h2 id="upload-heading">Upload a dataset</h2>
+            <p class="card-description">Import a CSV file to make it available for reporting.</p>
+            <form id="upload-form" class="upload-form">
+                <div class="field">
+                    <label for="dataset-file">CSV file</label>
+                    <input id="dataset-file" name="dataset" type="file" accept=".csv,text/csv" required>
+                    <p class="help-text">CSV files up to 5 MB are accepted.</p>
+                </div>
+                <button id="upload-button" class="btn" type="submit">Upload Dataset</button>
+            </form>
+            <p id="upload-message" class="message" role="status" aria-live="polite" hidden></p>
+        </section>
+
+        <section class="card" aria-labelledby="generate-heading">
+            <h2 id="generate-heading">Generate a report</h2>
+            <p class="card-description">Choose one uploaded dataset to display its complete contents.</p>
+            <div class="report-controls">
+                <div class="field">
+                    <label for="dataset-select">Uploaded dataset</label>
+                    <select id="dataset-select" disabled>
+                        <option>Loading datasets...</option>
+                    </select>
+                </div>
+                <button id="generate-button" class="btn" type="button" disabled>Generate Report</button>
+            </div>
+            <p id="dataset-message" class="message info" role="status" aria-live="polite">Loading uploaded datasets...</p>
+            <div id="no-datasets" class="empty-state" hidden>
+                <span class="icon">📁</span>
+                <strong>No datasets have been uploaded.</strong>
+                <p>Upload a CSV file above to generate your first report.</p>
+            </div>
+        </section>
+
+        <section id="report-card" class="card report-card" aria-labelledby="report-title" hidden>
+            <div class="report-card-header">
+                <h2 id="report-title">Generated report</h2>
+                <div class="report-summary">
+                    <span>File: <strong id="report-filename"></strong></span>
+                    <span>Records: <strong id="report-count"></strong></span>
+                    <span>Uploaded: <strong id="report-date"></strong></span>
+                </div>
+            </div>
+            <p id="report-empty" class="empty-state" hidden>This dataset contains no records.</p>
+            <div id="table-scroll" class="table-scroll">
+                <table>
+                    <thead id="report-head"></thead>
+                    <tbody id="report-body"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="/public/js/reports.js"></script>
+</body>
+</html>
