@@ -1,0 +1,5 @@
+// Only lets logged-in users through; everyone else goes to the login page
+module.exports = (req, res, next) => {
+  if (req.session.user) return next();
+  res.redirect("/account/login");
+};

@@ -1,0 +1,27 @@
+<%# VIEW - Log In (Victoria) %>
+<%- include('../partials/header') %>
+<link rel="stylesheet" href="/account.css">
+
+<div class="auth-page">
+  <form class="auth-card" action="/account/login" method="POST">
+    <h1>Log In</h1>
+    <p class="auth-subtitle">Planned to A.T. Impact Platform</p>
+
+    <% if (error) { %>
+      <p class="auth-error"><%= error %></p>
+    <% } %>
+
+    <label>Email
+      <input type="email" name="email" value="<%= email %>" required autofocus>
+    </label>
+
+    <label>Password
+      <input type="password" name="password" required>
+    </label>
+
+    <button type="submit">Log In</button>
+    <p class="auth-switch">No account yet? <a href="/account/register">Create one</a></p>
+  </form>
+</div>
+
+<%- include('../partials/footer') %>

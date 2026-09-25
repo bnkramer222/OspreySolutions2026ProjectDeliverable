@@ -1,4 +1,27 @@
+<%# VIEW - Account (Victoria) %>
 <%- include('../partials/header') %>
-<h1>Account</h1>
-<p>Account Management goes here.</p>
+<link rel="stylesheet" href="/account.css">
+
+<div class="account-page">
+  <h1>Account</h1>
+
+  <section class="auth-card wide">
+    <h2>Signed in as</h2>
+    <p class="account-name"><%= user.name %></p>
+    <p class="account-email"><%= user.email %></p>
+    <form action="/account/logout" method="POST">
+      <button type="submit">Log Out</button>
+    </form>
+  </section>
+
+  <section class="auth-card wide">
+    <h2>Admin accounts</h2>
+    <ul class="account-list">
+      <% accounts.forEach((a) => { %>
+        <li><strong><%= a.name %></strong> <span><%= a.email %></span></li>
+      <% }) %>
+    </ul>
+  </section>
+</div>
+
 <%- include('../partials/footer') %>

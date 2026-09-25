@@ -8,8 +8,12 @@
 </head>
 <body>
   <nav>
-    <p id="dashboard-title">Planned to A.T. Dashboard</p>
-    <a href="/dashboard">Home</a>
-    <a href="/account">Account</a>
+    <% if (user) { %>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/files">Files</a>
+      <a href="/reports">Reports</a>
+      <a href="/account">Account</a>
+    <% } else { %>
+      <a href="/account/login">Log In</a>
+    <% } %>
   </nav>
-  <main>
