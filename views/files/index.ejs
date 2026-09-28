@@ -1,24 +1,47 @@
 <%# VIEW - File Management (Brandon) %>
+<%# This is the View in MVC. It is the page the user sees. %>
+<%# EJS = HTML with small bits of JavaScript mixed in. %>
+<%# The data (title and sections) comes from the Controller. %>
+
 <%- include('../partials/header') %>
+<%# Adds the shared top of the page (nav bar), used on every page. %>
+
 <h1><%= title %></h1>
+<%# Page title: "Files", "Pre-Survey" or "Post-Survey". %>
 
 <% sections.forEach(({ type, label, files }) => { %>
+<%# Loops through the sections the Controller sent (one or both). %>
+<%# Each section has a type (pre/post), a label (heading) and its files. %>
+
   <section>
     <h2><%= label %></h2>
+    <%# Section heading, like "Pre-Survey". %>
 
     <form action="/files/<%= type %>/upload" method="POST" enctype="multipart/form-data">
       <input type="file" name="surveyFile" accept=".csv,.xlsx,.xls" required>
       <button type="submit">Upload</button>
     </form>
+    <%# The upload form. It sends the file to /files/pre/upload or /files/post/upload. %>
+    <%# enctype="multipart/form-data" is required to send files. %>
+    <%# name="surveyFile" matches upload.single("surveyFile") in the routes. %>
+    <%# accept only shows CSV and Excel files in the file picker. %>
+    <%# required means you can't click Upload without choosing a file. %>
 
     <% if (files.length === 0) { %>
       <p>No <%= label.toLowerCase() %> files uploaded yet.</p>
+      <%# Shown when this section has no files yet. %>
+
     <% } else { %>
       <ul>
         <% files.forEach((f) => { %>
+        <%# Loops through each file and makes one list item for it. %>
           <li>
             <a href="/files/<%= type %>/<%= encodeURIComponent(f.name) %>" target="_blank"><%= f.name %></a>
+            <%# The file name as a link. Clicking it opens the file in a new tab. %>
+            <%# encodeURIComponent makes names with spaces work in the link. %>
+
             (<%= (f.size / 1024).toFixed(1) %> KB, <%= f.uploadedAt.toLocaleString() %>)
+            <%# Shows the file size in KB and the date and time it was uploaded. %>
           </li>
         <% }) %>
       </ul>
@@ -27,3 +50,4 @@
 <% }) %>
 
 <%- include('../partials/footer') %>
+<%# Adds the shared bottom of the page. %>
