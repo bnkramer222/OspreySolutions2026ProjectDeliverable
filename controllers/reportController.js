@@ -16,12 +16,14 @@ exports.index = (req, res) => {
     }
   }
 
+  const noResults = Boolean(report && report.rows.length === 0);
   res.render("reports/index", {
     title: "Reports",
     preFiles: reportModel.listCsvFiles("pre"),
     postFiles: reportModel.listCsvFiles("post"),
     selected: { pre, post },
     report,
+    noResults,
     error,
   });
 };

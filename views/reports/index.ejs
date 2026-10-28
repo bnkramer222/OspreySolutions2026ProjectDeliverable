@@ -1,12 +1,10 @@
 <%# VIEW - Report Generation (Joshua) %>
 <%- include('../partials/header') %>
 <link rel="stylesheet" href="/reports.css">
-
 <div class="report-page">
   <h1>Reports</h1>
   <p class="subtitle">Compare a pre-survey with a post-survey to see what changed.</p>
-
-  <form class="report-card report-form" action="/reports" method="GET">
+  <form id="report-settings" class="report-card report-form" action="/reports" method="GET" tabindex="-1" aria-label="Report settings">
     <label>Pre-Survey file
       <select name="pre" required>
         <option value="">Choose a file</option>
@@ -15,7 +13,6 @@
         <% }) %>
       </select>
     </label>
-
     <label>Post-Survey file
       <select name="post" required>
         <option value="">Choose a file</option>
@@ -24,37 +21,43 @@
         <% }) %>
       </select>
     </label>
-
     <button type="submit">Generate Report</button>
   </form>
-
   <% if (preFiles.length === 0 || postFiles.length === 0) { %>
     <p class="notice">Upload a CSV in both the <a href="/files/pre">Pre-Survey</a> and <a href="/files/post">Post-Survey</a> sections first.</p>
   <% } %>
-
   <% if (error) { %>
-    <p class="notice error"><%= error %></p>
+    <p class="notice error" role="alert"><%= error %></p>
   <% } %>
-
-  <% if (report) { %>
-    <div class="stats">
-      <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
-      <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
-      <div class="report-card stat"><span class="stat-value"><%= report.matched %></span><span class="stat-label">Took both surveys</span></div>
-    </div>
-
-    <section class="report-card">
-      <div class="results-header">
-        <h2>Pre vs. Post</h2>
-        <div class="legend">
-          <span><i class="swatch pre"></i>Pre</span>
-          <span><i class="swatch post"></i>Post</span>
+  <% if (noResults) { %>
+    <section class="report-card report-empty" role="status" aria-live="polite">
+      <h2>No report data</h2>
+      <p>No report data matches your current selections. Choose different files or change the report settings and try again.</p>
+      <a class="report-action" href="#report-settings">Change Report Settings</a>
+    </section>
+  <% } %>
+  <% if (report && !noResults) { %>
+    <section aria-labelledby="report-preview-title">
+      <div class="results-header preview-header">
+        <div>
+          <h2 id="report-preview-title">Report Preview</h2>
+          <p class="preview-intro">Review the report information before continuing.</p>
         </div>
+        <a class="report-action" href="#report-settings">Change Report Settings</a>
       </div>
-
-      <% if (report.rows.length === 0) { %>
-        <p>No matching number or Yes/No questions found in these two files.</p>
-      <% } else { %>
+      <div class="stats">
+        <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
+        <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
+        <div class="report-card stat"><span class="stat-value"><%= report.matched %></span><span class="stat-label">Took both surveys</span></div>
+      </div>
+      <section class="report-card" aria-labelledby="report-comparison-title">
+        <div class="results-header">
+          <h3 id="report-comparison-title">Pre vs. Post</h3>
+          <div class="legend">
+            <span><i class="swatch pre"></i>Pre</span>
+            <span><i class="swatch post"></i>Post</span>
+          </div>
+        </div>
         <%
           const fmt = (r, v) => (r.kind === 'percent' ? v.toFixed(0) + '% Yes' : v.toFixed(2));
           const width = (r, v) => (r.scale > 0 ? (v / r.scale) * 100 : 0).toFixed(1);
@@ -81,9 +84,8 @@
           </div>
         <% }) %>
         <p class="footnote">Numbers are averages; Yes/No questions show the percent who answered Yes.</p>
-      <% } %>
+      </section>
     </section>
   <% } %>
 </div>
-
 <%- include('../partials/footer') %>
