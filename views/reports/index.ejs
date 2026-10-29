@@ -70,38 +70,15 @@
   <% if (report && !noResults && !error) { %>
     <section aria-labelledby="report-results-title" data-report-output>
       <div class="results-header">
-        <h2 id="report-results-title"><%= preview ? "Report Preview" : "Report Results" %></h2>
-        <% if (!preview) { %>
+        <h2 id="report-results-title">Report</h2>
           <div data-print-controls><div class="report-form">
             <button type="button" data-report-print>Print Report</button>
           </div></div>
-        <% } %>
       </div>
       <div data-print-controls>
         <p class="notice" id="report-outdated" role="status" hidden>Settings changed. This report reflects the previous settings; preview or generate again to refresh it.</p>
       </div>
       <p>Pre: <%= report.preName %> · Post: <%= report.postName %></p>
-      <p>Included fields (<%= selectedFields.length %>): <%= selectedFields.map(label).join(', ') %></p>
-      <% if (preview) { %>
-        <p>Pre responses: <%= report.preCount %> · Post responses: <%= report.postCount %></p>
-        <table aria-label="Report preview comparisons">
-          <thead><tr><th scope="col">Question</th><th scope="col">Pre</th><th scope="col">Post</th><th scope="col">Change</th></tr></thead>
-          <tbody>
-            <% selectedFields.slice(0, 3).forEach((field) => { const row = report.rows.find((r) => r.column === field); %>
-              <tr><th scope="row"><%= label(field) %></th>
-                <% if (row) { %>
-                  <td><%= fmt(row, row.pre) %></td><td><%= fmt(row, row.post) %></td><td><%= change(row) %></td>
-                <% } else { %>
-                  <td colspan="3">No usable comparison</td>
-                <% } %>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-        <% if (selectedFields.length > 3) { %>
-          <p>Showing 3 of <%= selectedFields.length %> selected questions; the generated report includes all selected questions.</p>
-        <% } %>
-      <% } else { %>
       <div class="stats">
         <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
         <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
@@ -111,8 +88,8 @@
         <div class="results-header">
           <h2 id="report-comparison-title">Pre vs. Post</h2>
           <div class="legend">
-            <span><i class="swatch pre"></i>Pre</span>
-            <span><i class="swatch post"></i>Post</span>
+            <span><svg class="swatch pre" aria-hidden="true" focusable="false"><rect width="12" height="12" fill="var(--pre)"/></svg>Pre</span>
+            <span><svg class="swatch post" aria-hidden="true" focusable="false"><rect width="12" height="12" fill="var(--post)"/></svg>Post</span>
           </div>
         </div>
         <% report.rows.forEach((r) => { %>
@@ -125,12 +102,12 @@
             </div>
             <div class="bar-row" title="Pre: <%= fmt(r, r.pre) %>">
               <span class="bar-label">Pre</span>
-              <div class="bar-track"><div class="bar pre" style="width: <%= width(r, r.pre) %>%"></div></div>
+              <svg class="bar-track" width="100%" height="10" aria-hidden="true" focusable="false"><rect width="<%= width(r, r.pre) %>%" height="10" fill="var(--pre)"/></svg>
               <span class="bar-value"><%= fmt(r, r.pre) %></span>
             </div>
             <div class="bar-row" title="Post: <%= fmt(r, r.post) %>">
               <span class="bar-label">Post</span>
-              <div class="bar-track"><div class="bar post" style="width: <%= width(r, r.post) %>%"></div></div>
+              <svg class="bar-track" width="100%" height="10" aria-hidden="true" focusable="false"><rect width="<%= width(r, r.post) %>%" height="10" fill="var(--post)"/></svg>
               <span class="bar-value"><%= fmt(r, r.post) %></span>
             </div>
           </div>
@@ -140,7 +117,6 @@
         <% }) %>
         <p class="footnote">Numbers are averages; Yes/No questions show the percent who answered Yes.</p>
       </section>
-      <% } %>
     </section>
   <% } %>
 </div>
