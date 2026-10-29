@@ -28,21 +28,29 @@
   <% } %>
   <% if (error) { %>
     <p class="notice error" role="alert"><%= error %></p>
+    <div class="report-form">
+      <button type="button" data-report-settings>Change Report Settings</button>
+    </div>
   <% } %>
   <% if (noResults) { %>
     <section class="report-card" role="status" aria-live="polite">
       <h2>No report data</h2>
-      <p class="notice">No report data matches your current selections. Choose different files or change the report settings and try again.</p>
-      <a href="#report-settings">Change Report Settings</a>
+      <p class="notice">Both files were read, but there are no comparable number or Yes/No questions. Choose different files and generate the report again.</p>
+      <div class="report-form">
+        <button type="button" data-report-settings>Change Report Settings</button>
+      </div>
     </section>
   <% } %>
   <% if (report && !noResults) { %>
-    <section aria-labelledby="report-preview-title">
+    <section aria-labelledby="report-results-title">
       <div class="results-header">
-        <h2 id="report-preview-title">Report Preview</h2>
-        <a href="#report-settings">Change Report Settings</a>
+        <h2 id="report-results-title">Report Results</h2>
+        <div class="report-form">
+          <button type="button" data-report-print>Preview / Print Report</button>
+          <button type="button" data-report-settings>Change Report Settings</button>
+        </div>
       </div>
-      <p class="subtitle">Review the report information before continuing.</p>
+      <p class="subtitle">View the complete results below. Preview / Print Report opens your browser’s print preview. Review it before printing, or cancel to keep viewing your results.</p>
       <div class="stats">
         <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
         <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
@@ -86,4 +94,16 @@
     </section>
   <% } %>
 </div>
+<script>
+  document.querySelectorAll('[data-report-settings]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const selection = document.getElementById('report-settings');
+      selection.focus();
+      selection.scrollIntoView({ block: 'center' });
+    });
+  });
+  document.querySelectorAll('[data-report-print]').forEach((button) => {
+    button.addEventListener('click', () => window.print());
+  });
+</script>
 <%- include('../partials/footer') %>
