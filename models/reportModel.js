@@ -68,10 +68,18 @@ module.exports = {
       (c) => !INFO_COLUMNS.includes(c) && postColumns.includes(c),
     );
 
+    const fields = [];
     const rows = questions
       .map((column) => {
         const before = summarize(pre, column);
         const after = summarize(post, column);
+        const missing = (records) => records.every((r) => r[column] === undefined || r[column] === "");
+        // A supported question with a blank side remains selectable, but cannot
+        // produce a comparison until both surveys have usable answers.
+        if ((before && after && before.kind === after.kind) ||
+            (before && missing(post)) || (after && missing(pre))) {
+          fields.push(column);
+        }
         if (!before || !after || before.kind !== after.kind) return null;
         return {
           column,
@@ -94,6 +102,7 @@ module.exports = {
       preCount: pre.length,
       postCount: post.length,
       matched,
+      fields,
       rows,
     };
   },

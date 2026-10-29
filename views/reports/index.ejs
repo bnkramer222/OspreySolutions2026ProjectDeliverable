@@ -1,55 +1,107 @@
 <%# VIEW - Report Generation (Joshua) %>
 <%- include('../partials/header') %>
 <link rel="stylesheet" href="/reports.css">
+<%
+  const label = (field) => field.replace(/_/g, ' ').replace(/(\d+)to(\d+)/g, '$1-$2');
+  const fmt = (r, v) => (r.kind === 'percent' ? v.toFixed(0) + '% Yes' : v.toFixed(2));
+  const width = (r, v) => (r.scale > 0 ? (v / r.scale) * 100 : 0).toFixed(1);
+  const change = (r) => (r.change >= 0 ? '+' : '') + (r.kind === 'percent' ? r.change.toFixed(0) + ' pts' : r.change.toFixed(2));
+%>
 <div class="report-page">
   <h1>Reports</h1>
   <p class="subtitle">Compare a pre-survey with a post-survey to see what changed.</p>
-  <form class="report-card report-form" action="/reports" method="GET" aria-label="Report settings">
-    <label>Pre-Survey file
-      <select id="report-settings" name="pre" required>
-        <option value="">Choose a file</option>
-        <% preFiles.forEach((f) => { %>
-          <option value="<%= f.name %>" <%= selected.pre === f.name ? 'selected' : '' %>><%= f.name %></option>
-        <% }) %>
-      </select>
-    </label>
-    <label>Post-Survey file
-      <select name="post" required>
-        <option value="">Choose a file</option>
-        <% postFiles.forEach((f) => { %>
-          <option value="<%= f.name %>" <%= selected.post === f.name ? 'selected' : '' %>><%= f.name %></option>
-        <% }) %>
-      </select>
-    </label>
-    <button type="submit">Generate Report</button>
-  </form>
+  <div data-print-controls>
+    <form id="report-form" class="report-card" action="/reports" method="GET" aria-label="Report settings">
+      <div class="report-form">
+        <label>Pre-Survey file
+          <select id="report-pre" name="pre" required>
+            <option value="">Choose a file</option>
+            <% preFiles.forEach((f) => { %>
+              <option value="<%= f.name %>" <%= selected.pre === f.name ? 'selected' : '' %>><%= f.name %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label>Post-Survey file
+          <select name="post" required>
+            <option value="">Choose a file</option>
+            <% postFiles.forEach((f) => { %>
+              <option value="<%= f.name %>" <%= selected.post === f.name ? 'selected' : '' %>><%= f.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      </div>
+      <input type="hidden" name="settingsOpen" value="<%= settingsOpen ? '1' : '0' %>">
+      <div class="report-form">
+        <button id="report-settings" type="submit" name="action" value="settings" aria-expanded="<%= settingsOpen %>" aria-controls="report-fields">Report Settings</button>
+      </div>
+      <div id="report-fields" tabindex="-1" <%= settingsOpen ? '' : 'hidden' %>>
+        <% if (fields.length) { %>
+          <input type="hidden" name="fieldsSet" value="1">
+          <input type="hidden" name="fieldPair" value="<%= pair %>">
+          <fieldset>
+            <legend>Report fields</legend>
+            <% fields.forEach((field) => { %>
+              <p><label><input type="checkbox" name="fields" value="<%= field %>" <%= selectedFields.includes(field) ? 'checked' : '' %>> <%= label(field) %></label></p>
+            <% }) %>
+          </fieldset>
+        <% } else { %>
+          <p class="notice"><%= error || (selected.pre && selected.post ? 'No reportable fields are available for these files.' : 'Choose both survey files to load report fields.') %></p>
+        <% } %>
+      </div>
+      <div class="report-form">
+        <button type="submit" name="action" value="preview">Preview Report</button>
+        <button type="submit" name="action" value="generate" aria-describedby="report-print-note">Generate Report</button>
+      </div>
+      <p id="report-print-note" class="footnote">Generate Report opens browser printing.</p>
+    </form>
+  </div>
   <% if (preFiles.length === 0 || postFiles.length === 0) { %>
     <p class="notice">Upload a CSV in both the <a href="/files/pre">Pre-Survey</a> and <a href="/files/post">Post-Survey</a> sections first.</p>
   <% } %>
   <% if (error) { %>
     <p class="notice error" role="alert"><%= error %></p>
-    <div class="report-form">
-      <button type="button" data-report-settings>Change Report Settings</button>
-    </div>
   <% } %>
   <% if (noResults) { %>
     <section class="report-card" role="status" aria-live="polite">
       <h2>No report data</h2>
-      <p class="notice">Both files were read, but there are no comparable number or Yes/No questions. Choose different files and generate the report again.</p>
-      <div class="report-form">
-        <button type="button" data-report-settings>Change Report Settings</button>
-      </div>
+      <p class="notice"><%= emptyMessage %></p>
     </section>
   <% } %>
-  <% if (report && !noResults) { %>
-    <section aria-labelledby="report-results-title">
+  <% if (report && !noResults && !error) { %>
+    <section aria-labelledby="report-results-title" data-report-output>
       <div class="results-header">
-        <h2 id="report-results-title">Report Results (Preview)</h2>
-        <div class="report-form">
-          <button type="button" data-report-print>Print Report</button>
-          <button type="button" data-report-settings>Change Report Settings</button>
-        </div>
+        <h2 id="report-results-title"><%= preview ? "Report Preview" : "Report Results" %></h2>
+        <% if (!preview) { %>
+          <div data-print-controls><div class="report-form">
+            <button type="button" data-report-print>Print Report</button>
+          </div></div>
+        <% } %>
       </div>
+      <div data-print-controls>
+        <p class="notice" id="report-outdated" role="status" hidden>Settings changed. This report reflects the previous settings; preview or generate again to refresh it.</p>
+      </div>
+      <p>Pre: <%= report.preName %> · Post: <%= report.postName %></p>
+      <p>Included fields (<%= selectedFields.length %>): <%= selectedFields.map(label).join(', ') %></p>
+      <% if (preview) { %>
+        <p>Pre responses: <%= report.preCount %> · Post responses: <%= report.postCount %></p>
+        <table aria-label="Report preview comparisons">
+          <thead><tr><th scope="col">Question</th><th scope="col">Pre</th><th scope="col">Post</th><th scope="col">Change</th></tr></thead>
+          <tbody>
+            <% selectedFields.slice(0, 3).forEach((field) => { const row = report.rows.find((r) => r.column === field); %>
+              <tr><th scope="row"><%= label(field) %></th>
+                <% if (row) { %>
+                  <td><%= fmt(row, row.pre) %></td><td><%= fmt(row, row.post) %></td><td><%= change(row) %></td>
+                <% } else { %>
+                  <td colspan="3">No usable comparison</td>
+                <% } %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (selectedFields.length > 3) { %>
+          <p>Showing 3 of <%= selectedFields.length %> selected questions; the generated report includes all selected questions.</p>
+        <% } %>
+      <% } else { %>
       <div class="stats">
         <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
         <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
@@ -63,15 +115,10 @@
             <span><i class="swatch post"></i>Post</span>
           </div>
         </div>
-        <%
-          const fmt = (r, v) => (r.kind === 'percent' ? v.toFixed(0) + '% Yes' : v.toFixed(2));
-          const width = (r, v) => (r.scale > 0 ? (v / r.scale) * 100 : 0).toFixed(1);
-          const change = (r) => (r.change >= 0 ? '+' : '') + (r.kind === 'percent' ? r.change.toFixed(0) + ' pts' : r.change.toFixed(2));
-        %>
         <% report.rows.forEach((r) => { %>
           <div class="question">
             <div class="question-top">
-              <span class="question-name"><%= r.column.replace(/_/g, ' ').replace(/(\d+)to(\d+)/, '($1–$2)') %></span>
+              <span class="question-name"><%= label(r.column) %></span>
               <span class="change <%= r.change > 0 ? 'up' : r.change < 0 ? 'down' : '' %>">
                 <%= r.change > 0 ? '▲' : r.change < 0 ? '▼' : '■' %> <%= change(r) %>
               </span>
@@ -88,21 +135,99 @@
             </div>
           </div>
         <% }) %>
+        <% selectedFields.filter((field) => !report.rows.some((row) => row.column === field)).forEach((field) => { %>
+          <p class="notice"><%= label(field) %>: no usable answers in both surveys for comparison.</p>
+        <% }) %>
         <p class="footnote">Numbers are averages; Yes/No questions show the percent who answered Yes.</p>
       </section>
+      <% } %>
     </section>
   <% } %>
 </div>
 <script>
-  document.querySelectorAll('[data-report-settings]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const selection = document.getElementById('report-settings');
-      selection.focus();
-      selection.scrollIntoView({ block: 'center' });
-    });
+  const settings = document.getElementById('report-form');
+  const disclosure = document.getElementById('report-settings');
+  const fieldsPanel = document.getElementById('report-fields');
+  const openInput = settings.elements.settingsOpen;
+  const currentPair = () => JSON.stringify([settings.elements.pre.value, settings.elements.post.value]);
+  let loadedPair = <%- JSON.stringify(pair).replace(/</g, '\u003c') %>;
+  let fieldRequest = 0;
+  const focusFields = () => {
+    (fieldsPanel.querySelector('input[type="checkbox"]') || fieldsPanel).focus();
+    fieldsPanel.scrollIntoView({ block: 'nearest' });
+  };
+  async function loadFields(focus) {
+    if (loadedPair === currentPair()) { if (focus) focusFields(); return; }
+    const request = ++fieldRequest;
+    const pair = currentPair();
+    fieldsPanel.textContent = 'Loading report fields…';
+    const query = new URLSearchParams(new FormData(settings));
+    query.set('action', 'settings');
+    query.set('settingsOpen', '1');
+    try {
+      const response = await fetch('/reports?' + query);
+      if (!response.ok || response.redirected) throw new Error('Unavailable settings');
+      const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const updated = page.getElementById('report-fields');
+      if (!updated) throw new Error('Unavailable settings');
+      if (request !== fieldRequest || pair !== currentPair()) return;
+      fieldsPanel.replaceChildren(...updated.childNodes);
+      loadedPair = pair;
+    } catch (error) {
+      if (request !== fieldRequest || pair !== currentPair()) return;
+      fieldsPanel.textContent = 'Could not load report fields. Try Report Settings again.';
+    }
+    if (focus && !fieldsPanel.hidden) focusFields();
+  }
+  disclosure.addEventListener('click', (event) => {
+    event.preventDefault();
+    const open = disclosure.getAttribute('aria-expanded') !== 'true';
+    disclosure.setAttribute('aria-expanded', String(open));
+    fieldsPanel.hidden = !open;
+    openInput.value = open ? '1' : '0';
+    if (open) loadFields(true);
+    else disclosure.focus();
+  });
+  settings.addEventListener('change', (event) => {
+    const outdated = document.getElementById('report-outdated');
+    if (outdated) outdated.hidden = false;
+    if (event.target.name === 'pre' || event.target.name === 'post') {
+      ++fieldRequest;
+      if (!fieldsPanel.hidden) loadFields(false);
+    }
+  });
+  settings.addEventListener('submit', (event) => {
+    // Only an explicit Generate submission requests automatic printing.
+    const flag = settings.querySelector('input[name="print"]');
+    if (flag) flag.remove();
+    if (event.submitter && event.submitter.value === 'generate') {
+      const input = document.createElement('input');
+      input.type = 'hidden'; input.name = 'print'; input.value = '1';
+      settings.append(input);
+    }
+  });
+  const printControls = [...document.querySelectorAll('[data-print-controls]')];
+  const printState = new Map();
+  window.addEventListener('beforeprint', () => {
+    printControls.forEach((section) => { if (!printState.has(section)) printState.set(section, section.hidden); section.hidden = true; });
+  });
+  window.addEventListener('afterprint', () => {
+    printState.forEach((hidden, section) => { section.hidden = hidden; });
+    printState.clear();
   });
   document.querySelectorAll('[data-report-print]').forEach((button) => {
     button.addEventListener('click', () => window.print());
   });
+  const printUrl = new URL(window.location.href);
+  if (printUrl.searchParams.has('print')) {
+    printUrl.searchParams.delete('print');
+    history.replaceState(history.state, '', printUrl);
+  }
+  <% if (autoPrint) { %>
+    // The URL is consumed before printing; reload/history must not reopen it.
+    if (performance.getEntriesByType('navigation')[0]?.type === 'navigate') {
+      window.addEventListener('load', () => window.print(), { once: true });
+    }
+  <% } %>
 </script>
 <%- include('../partials/footer') %>
