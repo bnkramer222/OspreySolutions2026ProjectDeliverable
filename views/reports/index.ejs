@@ -44,13 +44,12 @@
   <% if (report && !noResults) { %>
     <section aria-labelledby="report-results-title">
       <div class="results-header">
-        <h2 id="report-results-title">Report Results</h2>
+        <h2 id="report-results-title">Report Results (Preview)</h2>
         <div class="report-form">
-          <button type="button" data-report-print>Preview / Print Report</button>
+          <button type="button" data-report-print>Print Report</button>
           <button type="button" data-report-settings>Change Report Settings</button>
         </div>
       </div>
-      <p class="subtitle">View the complete results below. Preview / Print Report opens your browser’s print preview. Review it before printing, or cancel to keep viewing your results.</p>
       <div class="stats">
         <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
         <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
