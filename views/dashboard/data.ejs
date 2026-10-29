@@ -1,0 +1,71 @@
+
+<%- include('../partials/header') %>
+
+<main>
+  <h1>Survey Data</h1>
+  <p>Use the filters to find specific survey records.</p>
+
+  <form action="/dashboard/data" method="GET">
+    <label for="type">Survey Type:</label>
+
+    <select name="type" id="type">
+      <option value="All" <%= type === 'All' ? 'selected' : '' %>>
+        All Surveys
+      </option>
+      <option value="Pre-Survey" <%= type === 'Pre-Survey' ? 'selected' : '' %>>
+        Pre-Survey
+      </option>
+      <option value="Post-Survey" <%= type === 'Post-Survey' ? 'selected' : '' %>>
+        Post-Survey
+      </option>
+    </select>
+
+    <label for="search">Search:</label>
+    <input
+      type="text"
+      name="search"
+      id="search"
+      placeholder="School, ID, or program"
+      value="<%= search %>"
+
+    >
+
+    <button type="submit">Apply Filters</button>
+    <a href="/dashboard/data">Reset</a>
+  </form>
+
+  <h2>Matching Records: <%= records.length %></h2>
+  <p>Total sample records: <%= totalRecords %></p>
+
+  <table border="1" cellpadding="10">
+    <thead>
+      <tr>
+        <th>Survey Type</th>
+        <th>Student ID</th>
+        <th>School</th>
+        <th>Location</th>
+        <th>Program</th>
+        <th>Grade</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      <% records.forEach(record => { %>
+        <tr>
+          <td><%= record.type %></td>
+          <td><%= record.id %></td>
+          <td><%= record.school %></td>
+          <td><%= record.location %></td>
+          <td><%= record.program %></td>
+          <td><%= record.grade %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+
+  <% if (records.length === 0) { %>
+    <p>No records match your filters. Try another search or reset the filters.</p>
+  <% } %>
+</main>
+
+<%- include('../partials/footer') %>

@@ -1,0 +1,65 @@
+
+<%- include('../partials/header') %>
+
+<main>
+
+  <h1>States and Schools</h1>
+  <p>View schools represented in the sample survey data.</p>
+
+  <form action="/dashboard/schools" method="GET">
+    <label for="state">Filter by state:</label>
+
+    <select name="state" id="state">
+      <option value="" <%= selectedState === '' ? 'selected' : '' %>>
+        All States
+      </option>
+      <option value="FL" <%= selectedState === 'FL' ? 'selected' : '' %>>
+        Florida
+      </option>
+      <option value="GA" <%= selectedState === 'GA' ? 'selected' : '' %>>
+        Georgia
+      </option>
+    </select>
+
+    <button type="submit">Apply Filter</button>
+    <a href="/dashboard/schools">Reset</a>
+  </form>
+
+  <h2>School Directory</h2>
+
+  <table border="1" cellpadding="10">
+    <thead>
+      <tr>
+        <th>School</th>
+        <th>Location</th>
+        <th>Pre-Survey Records</th>
+        <th>Post-Survey Records</th>
+        <th>Total Records</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      <% schools.forEach(school => { %>
+        <tr>
+          <td><%= school.school %></td>
+          <td><%= school.location %></td>
+          <td><%= school.preCount %></td>
+          <td><%= school.postCount %></td>
+          <td><%= school.preCount + school.postCount %></td>
+          <td>
+            <a href="/dashboard/data?search=<%= encodeURIComponent(school.school) %>">
+              View Records
+            </a>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+
+  <% if (schools.length === 0) { %>
+    <p>No schools match this state.</p>
+  <% } %>
+</main>
+
+<%- include('../partials/footer') %>

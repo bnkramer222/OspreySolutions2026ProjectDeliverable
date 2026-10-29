@@ -1,32 +1,43 @@
+
 <%- include('../partials/header') %>
 
-<div class="dashboard">
-    <h1>Dashboard</h1>
+<main class="dashboard">
+  <h1>PTAT Dashboard</h1>
 
 
-<div class="dashboard-tabs">
+  <div class="dashboard-tabs">
+  <a href="/dashboard/data" class="dashboard-tab">
+    <h2>Survey Data</h2>
+    <p>View and filter survey records.</p>
+  </a>
 
-    <div class="dashboard-tab">
-   <a href="/files/pre">
-            Pre-Survey Data
-        </a>
-          </div>
+  <a href="/dashboard/schools" class="dashboard-tab">
+    <h2>States and Schools</h2>
+    <p>View schools, locations, and survey records.</p>
+  </a>
 
-    <div class="dashboard-tab">
-       <a href="/files/post">
-            Post-Survey Data
-        </a>
-    </div>
+  <a href="/files/pre" class="dashboard-tab">
+    <h2>Pre-Survey</h2>
+    <p>View and import pre-survey files.</p>
+  </a>
 
-    <div class="dashboard-tab">
-        <a href="/reports">
-            Reports
-        </a>
-    </div>
-
-</div>
+  <a href="/files/post" class="dashboard-tab">
+    <h2>Post-Survey</h2>
+    <p>View and import post-survey files.</p>
+  </a>
 
 
-</div>
+  <a href="/reports" class="dashboard-tab">
+    <h2>Reports</h2>
+    <p>Open and utilize the report section.</p>
+  </a>
+
+<a href="/account" class="dashboard-tab">
+  <h2>Account Management</h2>
+  <p>View and manage account settings.</p>
+</a>
+
+  </div>
+</main>
 
 <%- include('../partials/footer') %>
