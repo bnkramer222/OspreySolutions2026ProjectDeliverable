@@ -1,61 +1,159 @@
+// ============================================================
 // CONTROLLER - File Management (Brandon)
-// This is the Controller in MVC.
-// It is the middle man between the page the user sees and the saved files.
+// The controller is the "middle man": a route sends a request
+// here, the controller gets data from the model, then sends back
+// a page (view) or a file.
+// ============================================================
 
 const fs = require("fs");
-// Loads Node's file tools. Used to check if a file exists.
-
+const path = require("path");
 const fileModel = require("../models/fileModel");
-// Loads my Model. The Model is the only part that knows where files are saved.
 
+// Heading text for each section. Add a line here to add a new section.
 const LABELS = { pre: "Pre-Survey", post: "Post-Survey" };
-// The heading shown on the page for each section.
 
+// Builds the data for one section: { type, label, files }
 const buildSection = (type) => ({
-  type, // "pre" or "post"
-  label: LABELS[type], // the heading, like "Pre-Survey"
-  files: fileModel.getAll(type), // asks the Model for the list of files
+  type,
+  label: LABELS[type],
+  files: fileModel.getAll(type),
 });
-// Puts together everything the page needs to show one section.
 
-// GET /files - both sections
+// Data every version of the page needs
+const pageData = (req) => ({
+  programs: fileModel.PROGRAMS, // dropdown choices (story #41)
+  years: fileModel.YEARS,
+  success: req.query.success || null, // green banner text, e.g. after upload/delete
+  error: req.query.error || null, // red banner text
+});
+
+// Sends the user back to a page with a green or red message,
+// e.g. /files/pre?success=...  The message shows in a banner.
+const sendBack = (res, url, key, text) =>
+  res.redirect(`${url}?${key}=${encodeURIComponent(text)}`);
+
+// GET /files
+// Shows BOTH the Pre and Post sections on one page.
 exports.index = (req, res) => {
   res.render("files/index", {
-    title: "Files", // page title
-    sections: fileModel.TYPES.map(buildSection), // builds both Pre and Post
+    title: "Uploaded files",
+    basePath: "/files", // where to come back to after a delete
+    sections: fileModel.TYPES.map(buildSection), // [pre section, post section]
+    ...pageData(req),
   });
 };
-// Runs when someone goes to /files.
-// Shows both the Pre and Post sections on one page.
 
-// GET /files/pre or /files/post - one section
+// GET /files/pre  or  GET /files/post
+// Shows ONLY that one section (this is where the dashboard buttons go).
 exports.section = (req, res) => {
-  const type = req.params.type; // gets "pre" or "post" from the web address
-  if (!fileModel.TYPES.includes(type))
-    return res.status(404).send("Page not found"); // stops anything that isn't pre or post
+  const type = req.params.type; // 'pre' or 'post', taken from the URL
+
+  if (!fileModel.TYPES.includes(type)) {
+    return res.status(404).send("Page not found");
+  }
+
   res.render("files/index", {
-    title: LABELS[type], // page title, like "Pre-Survey"
-    sections: [buildSection(type)], // builds just this one section
+    title: `${LABELS[type]} files`,
+    basePath: `/files/${type}`,
+    sections: [buildSection(type)],
+    ...pageData(req),
   });
 };
-// Runs when someone clicks the Pre or Post button on the Dashboard.
-// Shows only that one section, so pre and post files stay separate.
 
-// POST /files/:type/upload - multer already saved the file
+// POST /files/pre/upload  or  POST /files/post/upload
+// By the time this runs, multer (in the routes file) has ALREADY
+// checked the tags and saved the file to disk. Here we save its
+// details + tags to the database (story #41).
 exports.upload = (req, res) => {
-  res.redirect(`/files/${req.params.type}`); // goes back to the section they uploaded to
-};
-// Runs after a file is uploaded.
-// The file is already saved by multer (set up in the routes file).
-// This just sends the user back, where the new file now shows in the list.
+  const { type } = req.params;
+  const back = req.body.returnTo === "/files" ? "/files" : `/files/${type}`;
 
-// GET /files/:type/:name - open a file
-exports.view = (req, res) => {
-  const filePath = fileModel.getPath(req.params.type, req.params.name); // asks the Model where the file is
-  if (!fileModel.TYPES.includes(req.params.type) || !fs.existsSync(filePath)) {
-    return res.status(404).send("File not found"); // stops if the section is wrong or the file doesn't exist
-  }
-  res.sendFile(filePath); // sends the file to the browser
+  // multer refused the file (missing tags or wrong file type)
+  if (req.uploadError) return sendBack(res, back, "error", req.uploadError);
+  if (!req.file)
+    return sendBack(
+      res,
+      back,
+      "error",
+      "Please choose a CSV or Excel file to upload.",
+    );
+
+  fileModel.save(type, req.file.originalname, req.file.size, {
+    program: req.body.program,
+    school: req.body.school.trim(),
+    cohort: (req.body.cohort || "").trim(),
+    year: req.body.year,
+  });
+
+  sendBack(
+    res,
+    back,
+    "success",
+    `"${req.file.originalname}" was uploaded to ${LABELS[type]}.`,
+  );
 };
-// Runs when someone clicks a file name.
-// CSV files open in the browser. Excel files download.
+
+// GET /files/pre/survey.csv  (View button)
+// Sends the file to the browser so the user can see it.
+exports.view = (req, res) => {
+  const filePath = fileModel.getPath(req.params.type, req.params.name);
+
+  if (!fileModel.TYPES.includes(req.params.type) || !fs.existsSync(filePath)) {
+    return res.status(404).send("File not found");
+  }
+
+  // CSV files display as text; Excel files download
+  res.sendFile(filePath);
+};
+
+// POST /files/pre/survey.csv/delete
+// STORY #17: delete a file.  STORY #18: confirm it was deleted.
+// The pop-up on the page sends the word the user typed (confirmText)
+// and which page they were on (returnTo).
+exports.remove = (req, res) => {
+  const { type } = req.params;
+  const name = path.basename(req.params.name); // just the file name, no folders
+
+  if (!fileModel.TYPES.includes(type)) {
+    return res.status(404).send("Page not found");
+  }
+
+  // Only allow going back to our own two pages
+  const back = req.body.returnTo === "/files" ? "/files" : `/files/${type}`;
+
+  // Double-check the typed word here too, in case the page's
+  // JavaScript was skipped. The file is only deleted if it says DELETE.
+  if ((req.body.confirmText || "").trim() !== "DELETE") {
+    return sendBack(
+      res,
+      back,
+      "error",
+      `"${name}" was not deleted. Type DELETE to confirm.`,
+    );
+  }
+
+  const result = fileModel.remove(type, name);
+
+  if (result === "deleted") {
+    return sendBack(
+      res,
+      back,
+      "success",
+      `✓ "${name}" was deleted. It no longer appears in the list below.`,
+    );
+  }
+  if (result === "missing") {
+    return sendBack(
+      res,
+      back,
+      "error",
+      `"${name}" was not found. It may already be deleted.`,
+    );
+  }
+  return sendBack(
+    res,
+    back,
+    "error",
+    `"${name}" could not be deleted. Please try again.`,
+  );
+};

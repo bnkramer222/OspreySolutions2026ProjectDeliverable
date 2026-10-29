@@ -118,8 +118,7 @@ body {
   flex-wrap: wrap;
   gap: 8px;
 }
-.results-header h2,
-.results-header h3 {
+.results-header h2 {
   margin: 0;
   font-size: 20px;
 }
@@ -227,68 +226,5 @@ body {
   }
   .stat-value {
     font-size: 28px;
-  }
-}
-
-/* Preview and no-results recovery use the existing report setup. */
-.preview-header {
-  margin-bottom: 20px;
-}
-.preview-intro {
-  margin: 6px 0 0;
-  color: var(--muted);
-}
-.report-action {
-  display: inline-block;
-  padding: 10px 18px;
-  border-radius: 8px;
-  background: var(--brand);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-}
-.report-action:hover {
-  background: #2b4d7a;
-}
-.report-empty {
-  border-left: 4px solid var(--brand);
-}
-.report-empty h2 {
-  margin-top: 0;
-}
-.report-empty p {
-  line-height: 1.5;
-}
-.report-form label {
-  min-width: 0;
-}
-.report-form select {
-  box-sizing: border-box;
-  min-width: 0;
-  width: 100%;
-}
-.report-page a:focus-visible,
-.report-form select:focus-visible,
-.report-form button:focus-visible,
-#report-settings:focus {
-  outline: 3px solid var(--post);
-  outline-offset: 3px;
-}
-@media (max-width: 600px) {
-  .report-page {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-  .stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .question-top {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .question-name {
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
 }

@@ -4,9 +4,9 @@
 <div class="report-page">
   <h1>Reports</h1>
   <p class="subtitle">Compare a pre-survey with a post-survey to see what changed.</p>
-  <form id="report-settings" class="report-card report-form" action="/reports" method="GET" tabindex="-1" aria-label="Report settings">
+  <form class="report-card report-form" action="/reports" method="GET" aria-label="Report settings">
     <label>Pre-Survey file
-      <select name="pre" required>
+      <select id="report-settings" name="pre" required>
         <option value="">Choose a file</option>
         <% preFiles.forEach((f) => { %>
           <option value="<%= f.name %>" <%= selected.pre === f.name ? 'selected' : '' %>><%= f.name %></option>
@@ -30,21 +30,19 @@
     <p class="notice error" role="alert"><%= error %></p>
   <% } %>
   <% if (noResults) { %>
-    <section class="report-card report-empty" role="status" aria-live="polite">
+    <section class="report-card" role="status" aria-live="polite">
       <h2>No report data</h2>
-      <p>No report data matches your current selections. Choose different files or change the report settings and try again.</p>
-      <a class="report-action" href="#report-settings">Change Report Settings</a>
+      <p class="notice">No report data matches your current selections. Choose different files or change the report settings and try again.</p>
+      <a href="#report-settings">Change Report Settings</a>
     </section>
   <% } %>
   <% if (report && !noResults) { %>
     <section aria-labelledby="report-preview-title">
-      <div class="results-header preview-header">
-        <div>
-          <h2 id="report-preview-title">Report Preview</h2>
-          <p class="preview-intro">Review the report information before continuing.</p>
-        </div>
-        <a class="report-action" href="#report-settings">Change Report Settings</a>
+      <div class="results-header">
+        <h2 id="report-preview-title">Report Preview</h2>
+        <a href="#report-settings">Change Report Settings</a>
       </div>
+      <p class="subtitle">Review the report information before continuing.</p>
       <div class="stats">
         <div class="report-card stat"><span class="stat-value"><%= report.preCount %></span><span class="stat-label">Pre responses</span></div>
         <div class="report-card stat"><span class="stat-value"><%= report.postCount %></span><span class="stat-label">Post responses</span></div>
@@ -52,7 +50,7 @@
       </div>
       <section class="report-card" aria-labelledby="report-comparison-title">
         <div class="results-header">
-          <h3 id="report-comparison-title">Pre vs. Post</h3>
+          <h2 id="report-comparison-title">Pre vs. Post</h2>
           <div class="legend">
             <span><i class="swatch pre"></i>Pre</span>
             <span><i class="swatch post"></i>Post</span>

@@ -1,60 +1,79 @@
+// ============================================================
 // ROUTES - File Management (Brandon)
-// Routes connect each web address to the right Controller function.
-// Every address here starts with /files (set in app.js).
+// Routes map a URL + method (GET/POST) to a controller function.
+// Everything here starts with /files because app.js has:
+//   app.use('/files', require('./routes/fileRoutes'));
+// ============================================================
 
-const router = require("express").Router();
-// Creates a router, a list of addresses for the Files section.
-
+const express = require("express");
+const router = express.Router();
 const path = require("path");
-// Loads Node's path tools. Used to build folder locations and read file extensions.
-
-const multer = require("multer");
-// Loads multer, the library that receives and saves uploaded files.
-
+const multer = require("multer"); // library that receives uploaded files
 const controller = require("../controllers/fileController");
-// Loads my Controller, which has the functions each address runs.
-
 const fileModel = require("../models/fileModel");
-// Loads my Model, so the routes know the upload folder and the valid types.
 
-// Save uploads to uploads/pre or uploads/post; only allow CSV/Excel
+// ---- Upload settings (multer) ----
 const upload = multer({
   storage: multer.diskStorage({
+    // WHERE to save: uploads/pre or uploads/post,
+    // based on the :type part of the URL
     destination: (req, file, cb) =>
-      cb(null, path.join(fileModel.UPLOAD_DIR, req.params.type)), // saves into uploads/pre or uploads/post
-    filename: (req, file, cb) => cb(null, file.originalname), // keeps the file's original name
-  }),
-  // storage = WHERE the file is saved and WHAT it is named.
-  // Uploading a file with the same name replaces the old one.
+      cb(null, path.join(fileModel.UPLOAD_DIR, req.params.type)),
 
+    // WHAT to name it: keep the original file name.
+    // (Uploading the same name again replaces the old file.)
+    filename: (req, file, cb) => cb(null, file.originalname),
+  }),
+
+  // WHICH files to accept. Runs BEFORE the file is saved.
+  // cb(null, true) = accept, cb(null, false) = reject.
+  // The tag fields come before the file in the form, so req.body
+  // already has them here.
   fileFilter: (req, file, cb) => {
-    const okType = fileModel.TYPES.includes(req.params.type); // checks the section is "pre" or "post"
+    const okType = fileModel.TYPES.includes(req.params.type);
     const okExt = [".csv", ".xlsx", ".xls"].includes(
       path.extname(file.originalname).toLowerCase(),
-    ); // checks the file ends in .csv, .xlsx or .xls
-    cb(null, okType && okExt); // accept the file only if both checks pass
+    );
+
+    // STORY #41: Program and School are required; Year must be one of the choices
+    const { program, school, year } = req.body;
+    let problem = null;
+    if (!okType) problem = "Unknown section.";
+    else if (!okExt)
+      problem = `"${file.originalname}" is not a CSV or Excel file.`;
+    else if (!fileModel.PROGRAMS.includes(program))
+      problem = "Please choose a program.";
+    else if (!school || !school.trim())
+      problem = "Please enter the school or university.";
+    else if (year && !fileModel.YEARS.includes(year))
+      problem = "Please choose a valid academic year.";
+
+    req.uploadError = problem; // the controller shows this message if set
+    cb(null, !problem);
   },
-  // fileFilter = WHICH files are allowed.
-  // Anything that isn't CSV or Excel is not saved.
 });
-// "cb" means callback. It's how we tell multer our answer
-// (where to save it, what to name it, or whether to accept it).
 
+// Reads normal form fields (like the "Type DELETE" box) into req.body
+const readForm = express.urlencoded({ extended: false });
+
+// ---- The URLs ----
+
+// GET /files -> show both sections
 router.get("/", controller.index);
-// /files - shows both the Pre and Post sections.
 
+// GET /files/pre or /files/post -> show just that section
 router.get("/:type", controller.section);
-// /files/pre or /files/post - shows just one section (where the Dashboard buttons go).
-// ":type" means that part of the address can change (pre or post).
 
+// POST /files/pre/upload or /files/post/upload -> check tags, save file, save tags
+// upload.single('surveyFile') runs FIRST and saves the file.
+// 'surveyFile' must match name="surveyFile" on the file input in the view.
 router.post("/:type/upload", upload.single("surveyFile"), controller.upload);
-// /files/pre/upload or /files/post/upload - runs when the Upload button is clicked.
-// upload.single("surveyFile") runs FIRST and saves the one file.
-// "surveyFile" matches the name of the file input on the page.
-// Then controller.upload sends the user back to the list.
 
+// POST /files/pre/survey.csv/delete -> delete that file, then go back (stories #17, #18)
+// It's POST (not GET) because it changes data.
+router.post("/:type/:name/delete", readForm, controller.remove);
+
+// GET /files/pre/survey.csv -> open that file
 router.get("/:type/:name", controller.view);
-// /files/pre/survey.csv - runs when a file name is clicked, and opens that file.
 
 module.exports = router;
-// Shares these routes so app.js can use them.
