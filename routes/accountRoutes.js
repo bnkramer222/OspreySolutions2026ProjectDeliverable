@@ -10,4 +10,8 @@ router.get('/register', controller.showRegister);
 router.post('/register', controller.register);
 router.post('/logout', controller.logout);
 
+router.post('/change-password', requireAuth, controller.changePassword);
+router.post('/delete', requireAuth, controller.deleteAccount);
+router.get('/forgot', controller.showForgot);
+router.post('/forgot', controller.requestReset);
 module.exports = router;

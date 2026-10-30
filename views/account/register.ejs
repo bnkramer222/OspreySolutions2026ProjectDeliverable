@@ -11,8 +11,12 @@
       <p class="auth-error"><%= error %></p>
     <% } %>
 
-    <label>Name
-      <input type="text" name="name" value="<%= name %>" required autofocus>
+    <label>First Name
+      <input type="text" name="firstName" value="<%= firstName %>" autocomplete="given-name" required autofocus>
+    </label>
+
+    <label>Last Name
+      <input type="text" name="lastName" value="<%= lastName %>" autocomplete="family-name" required>
     </label>
 
     <label>Email
