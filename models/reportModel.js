@@ -15,22 +15,19 @@ const INFO_COLUMNS = [
   "survey_date",
 ];
 
-// Read a CSV into rows like { participant_id: 'P001', quiz_score_out_of_10: '4', ... }
+// Retain headers even when a readable CSV contains no data records.
 function readCsv(type, name) {
-  const text = fs.readFileSync(fileModel.getPath(type, name));
-  return parse(text, {
-    columns: true,
+  let columns = [];
+  const rows = parse(fs.readFileSync(fileModel.getPath(type, name)), {
+    columns: (names) => { columns = names; return names; },
     skip_empty_lines: true,
     bom: true,
     trim: true,
   });
+  return { rows, columns };
 }
-
 // Numbers -> average, Yes/No -> % Yes, anything else -> skipped
-function summarize(rows, column) {
-  const values = rows
-    .map((r) => r[column])
-    .filter((v) => v !== undefined && v !== "");
+function summarize(values) {
   if (values.length === 0) return null;
 
   if (values.every((v) => !isNaN(Number(v)))) {
@@ -49,61 +46,56 @@ function summarize(rows, column) {
   return null;
 }
 
-module.exports = {
-  // CSV files in a section (Excel isn't supported yet)
-  listCsvFiles(type) {
-    return fileModel
-      .getAll(type)
-      .filter((f) => f.name.toLowerCase().endsWith(".csv"));
-  },
+// Preserve the existing all-nonblank-answers rule: a mixed unsupported
+// column produces no summary, rather than silently dropping invalid answers.
+function inspectColumn(file, column) {
+  const exists = file.columns.includes(column);
+  const values = file.rows.map((r) => r[column]).filter((value) => value !== undefined && value !== "");
+  const answerCount = values.length;
+  const summary = exists ? summarize(values) : null;
+  return {
+    summary,
+    metadata: { exists, kind: summary ? summary.kind : null, answerCount, usableCount: summary ? answerCount : 0 },
+  };
+}
 
-  // Compare one pre file with one post file
+module.exports = {
+  listCsvFiles(type) {
+    return fileModel.getAll(type).filter((f) => f.name.toLowerCase().endsWith(".csv"));
+  },
   build(preName, postName) {
     const pre = readCsv("pre", preName);
     const post = readCsv("post", postName);
-
-    // Survey questions = columns in both files that aren't participant info
-    const postColumns = Object.keys(post[0] || {});
-    const questions = Object.keys(pre[0] || {}).filter(
-      (c) => !INFO_COLUMNS.includes(c) && postColumns.includes(c),
-    );
-
-    const fields = [];
-    const rows = questions
-      .map((column) => {
-        const before = summarize(pre, column);
-        const after = summarize(post, column);
-        const missing = (records) => records.every((r) => r[column] === undefined || r[column] === "");
-        // A supported question with a blank side remains selectable, but cannot
-        // produce a comparison until both surveys have usable answers.
-        if ((before && after && before.kind === after.kind) ||
-            (before && missing(post)) || (after && missing(pre))) {
-          fields.push(column);
-        }
-        if (!before || !after || before.kind !== after.kind) return null;
-        return {
+    const fields = [...new Set([...pre.columns, ...post.columns])].filter((c) => c !== "" && !INFO_COLUMNS.includes(c));
+    const availability = [];
+    const rows = [];
+    fields.forEach((column) => {
+      const before = inspectColumn(pre, column);
+      const after = inspectColumn(post, column);
+      const reasons = [];
+      for (const [side, info] of [["pre", before.metadata], ["post", after.metadata]]) {
+        if (!info.exists) reasons.push(`Missing from ${side}-survey.`);
+        else if (info.answerCount === 0) reasons.push(`No usable ${side}-survey answers.`);
+        else if (!info.kind) reasons.push(`Unsupported ${side}-survey answer type.`);
+      }
+      if (before.summary && after.summary && before.summary.kind !== after.summary.kind) {
+        reasons.push("Pre/post answer types do not match.");
+      }
+      const comparable = reasons.length === 0;
+      availability.push({ column, pre: before.metadata, post: after.metadata, comparable, reasons, reason: reasons.join(" ") });
+      if (comparable) {
+        rows.push({
           column,
-          kind: before.kind,
-          pre: before.value,
-          post: after.value,
-          change: after.value - before.value,
-          scale: Math.max(before.max, after.max), // longest bar = highest value seen
-        };
-      })
-      .filter(Boolean);
-
-    // Participants who took both surveys
-    const preIds = new Set(pre.map((r) => r.participant_id));
-    const matched = post.filter((r) => preIds.has(r.participant_id)).length;
-
-    return {
-      preName,
-      postName,
-      preCount: pre.length,
-      postCount: post.length,
-      matched,
-      fields,
-      rows,
-    };
+          kind: before.summary.kind,
+          pre: before.summary.value,
+          post: after.summary.value,
+          change: after.summary.value - before.summary.value,
+          scale: Math.max(before.summary.max, after.summary.max),
+        });
+      }
+    });
+    const preIds = new Set(pre.rows.map((r) => r.participant_id));
+    const matched = post.rows.filter((r) => preIds.has(r.participant_id)).length;
+    return { preName, postName, preCount: pre.rows.length, postCount: post.rows.length, matched, fields, availability, rows };
   },
 };

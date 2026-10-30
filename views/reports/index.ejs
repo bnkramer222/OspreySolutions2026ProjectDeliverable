@@ -1,12 +1,13 @@
 <%# VIEW - Report Generation (Joshua) %>
-<%- include('../partials/header') %>
-<link rel="stylesheet" href="/reports.css">
 <%
   const label = (field) => field.replace(/_/g, ' ').replace(/(\d+)to(\d+)/g, '$1-$2');
   const fmt = (r, v) => (r.kind === 'percent' ? v.toFixed(0) + '% Yes' : v.toFixed(2));
   const width = (r, v) => (r.scale > 0 ? (v / r.scale) * 100 : 0).toFixed(1);
   const change = (r) => (r.change >= 0 ? '+' : '') + (r.kind === 'percent' ? r.change.toFixed(0) + ' pts' : r.change.toFixed(2));
 %>
+<% if (!fragment) { %>
+<%- include('../partials/header') %>
+<link rel="stylesheet" href="/reports.css">
 <div class="report-page">
   <h1>Reports</h1>
   <p class="subtitle">Compare a pre-survey with a post-survey to see what changed.</p>
@@ -31,44 +32,78 @@
         </label>
       </div>
       <input type="hidden" name="settingsOpen" value="<%= settingsOpen ? '1' : '0' %>">
-      <div class="report-form">
-        <button id="report-settings" type="submit" name="action" value="settings" aria-expanded="<%= settingsOpen %>" aria-controls="report-fields">Report Settings</button>
-      </div>
-      <div id="report-fields" tabindex="-1" <%= settingsOpen ? '' : 'hidden' %>>
-        <% if (fields.length) { %>
-          <input type="hidden" name="fieldsSet" value="1">
-          <input type="hidden" name="fieldPair" value="<%= pair %>">
-          <fieldset>
-            <legend>Report fields</legend>
-            <% fields.forEach((field) => { %>
-              <p><label><input type="checkbox" name="fields" value="<%= field %>" <%= selectedFields.includes(field) ? 'checked' : '' %>> <%= label(field) %></label></p>
-            <% }) %>
-          </fieldset>
-        <% } else { %>
-          <p class="notice"><%= error || (selected.pre && selected.post ? 'No reportable fields are available for these files.' : 'Choose both survey files to load report fields.') %></p>
-        <% } %>
-      </div>
-      <div class="report-form">
+      <input type="hidden" name="fields" value="">
+      <p class="report-form">
+        <button id="report-settings" type="button" aria-expanded="<%= settingsOpen %>" aria-controls="report-fields">Report Settings</button>
         <button type="submit" name="action" value="preview">Preview Report</button>
         <button type="submit" name="action" value="generate" aria-describedby="report-print-note">Generate Report</button>
+      </p>
+      <div id="report-fields" tabindex="-1" <%= settingsOpen ? '' : 'hidden' %>>
+        <div class="results-header">
+          <fieldset id="report-questions">
+            <legend>Report questions</legend>
+            <% availability.forEach((field, index) => { %>
+              <p><input id="question-<%= index %>" type="checkbox" name="fields" value="<%= field.column %>" aria-describedby="question-info-<%= index %>" <%= selectedFields.includes(field.column) ? 'checked' : '' %>>
+                <label for="question-<%= index %>"><%= label(field.column) %></label><br>
+                <small id="question-info-<%= index %>"><% (field.comparable ? ['Ready.'] : field.reasons).forEach((reason) => { %><%= reason %><br><% }) %>Pre: <%= field.pre.usableCount %> usable · Post: <%= field.post.usableCount %> usable</small>
+              </p>
+            <% }) %>
+            <% if (!availability.length) { %><p><%= inspected ? 'No survey questions were detected in these files.' : 'Choose both survey files to inspect their questions.' %></p><% } %>
+          </fieldset>
+          <aside class="notice" aria-labelledby="readiness-title">
+            <h3 id="readiness-title">Report readiness</h3>
+            <p id="readiness-status" role="status" aria-live="polite" aria-atomic="true"><%= readiness.ready %> of <%= readiness.selected %> selected questions ready</p>
+            <p id="response-counts"><%= counts ? counts.pre + ' pre responses · ' + counts.post + ' post responses' : 'Choose both survey files.' %></p>
+            <ul id="readiness-issues"><% unavailable.forEach((field) => { %><li><strong><%= label(field.column) %></strong><% field.reasons.forEach((reason) => { %><br><%= reason %><% }) %></li><% }) %></ul>
+            <p id="removed-questions" hidden></p>
+          </aside>
+        </div>
       </div>
       <p id="report-print-note" class="footnote">Generate Report opens browser printing.</p>
+      <p id="request-status" role="status" aria-live="polite"></p>
+      <p id="request-error" class="notice error" role="alert" hidden><span></span> <a href="/account/login" hidden>Log in again</a> <button type="button" data-retry-availability hidden>Retry availability</button></p>
     </form>
   </div>
   <% if (preFiles.length === 0 || postFiles.length === 0) { %>
     <p class="notice">Upload a CSV in both the <a href="/files/pre">Pre-Survey</a> and <a href="/files/post">Post-Survey</a> sections first.</p>
   <% } %>
+  <div id="report-preview" data-print-controls aria-busy="false">
+<% } %>
+<% if (action === 'preview') { %>
   <% if (error) { %>
     <p class="notice error" role="alert"><%= error %></p>
-  <% } %>
-  <% if (noResults) { %>
-    <section class="report-card" role="status" aria-live="polite">
-      <h2>No report data</h2>
-      <p class="notice"><%= emptyMessage %></p>
+  <% } else if (report) { %>
+    <section class="report-card" data-report-preview aria-labelledby="preview-title">
+      <h2 id="preview-title" tabindex="-1">Report Preview</h2>
+      <p class="notice" data-report-outdated role="status" hidden>Settings changed. This preview reflects the previous settings; preview again to refresh it.</p>
+      <p>Pre: <%= report.preName %> · Post: <%= report.postName %></p>
+      <p><%= readiness.ready %> of <%= readiness.selected %> selected questions ready · <%= report.preCount %> pre responses · <%= report.postCount %> post responses</p>
+      <% if (unavailable.length) { %><ul><% unavailable.forEach((field) => { %><li><strong><%= label(field.column) %></strong>: <%= field.reason %></li><% }) %></ul><% } %>
+      <% if (noResults) { %>
+        <p class="notice" role="status"><%= emptyMessage %></p>
+      <% } else { %>
+        <table aria-label="Report preview comparisons">
+          <thead><tr><th scope="col">Question</th><th scope="col">Pre</th><th scope="col">Post</th><th scope="col">Change</th></tr></thead>
+          <tbody><% report.rows.slice(0, 3).forEach((row) => { %>
+            <tr><th scope="row"><%= label(row.column) %></th><td><%= fmt(row, row.pre) %></td><td><%= fmt(row, row.post) %></td><td><%= change(row) %></td></tr>
+          <% }) %></tbody>
+        </table>
+        <% if (report.rows.length > 3) { %><p>Showing 3 of <%= report.rows.length %> comparable selected questions. Generate Report includes all comparable selected questions.</p><% } %>
+      <% } %>
     </section>
   <% } %>
-  <% if (report && !noResults && !error) { %>
-    <section aria-labelledby="report-results-title" data-report-output>
+<% } %>
+<% if (!fragment) { %>
+  </div>
+  <% if (action !== 'preview') { %>
+    <% if (error) { %><p class="notice error" role="alert" data-report-feedback><%= error %></p><% } %>
+    <% if (noResults) { %>
+      <section class="report-card" role="status" data-report-feedback><h2>No report data</h2><p><%= emptyMessage %></p>
+        <% if (unavailable.length) { %><ul><% unavailable.forEach((field) => { %><li><%= label(field.column) %>: <%= field.reason %></li><% }) %></ul><% } %>
+      </section>
+    <% } %>
+    <% if (report && !error && !noResults) { %>
+    <section aria-labelledby="report-results-title" data-report-output data-generated-report>
       <div class="results-header">
         <h2 id="report-results-title">Report</h2>
           <div data-print-controls><div class="report-form">
@@ -76,7 +111,7 @@
           </div></div>
       </div>
       <div data-print-controls>
-        <p class="notice" id="report-outdated" role="status" hidden>Settings changed. This report reflects the previous settings; preview or generate again to refresh it.</p>
+        <p class="notice" data-report-outdated role="status" hidden>Settings changed. This report reflects the previous settings; preview or generate again to refresh it.</p>
       </div>
       <p>Pre: <%= report.preName %> · Post: <%= report.postName %></p>
       <div class="stats">
@@ -112,98 +147,215 @@
             </div>
           </div>
         <% }) %>
-        <% selectedFields.filter((field) => !report.rows.some((row) => row.column === field)).forEach((field) => { %>
-          <p class="notice"><%= label(field) %>: no usable answers in both surveys for comparison.</p>
+        <% unavailable.forEach((field) => { %>
+          <p class="notice"><%= label(field.column) %>: <%= field.reason %></p>
         <% }) %>
         <p class="footnote">Numbers are averages; Yes/No questions show the percent who answered Yes.</p>
       </section>
     </section>
+
+    <% } %>
   <% } %>
 </div>
+<script type="application/json" id="report-data"><%- JSON.stringify({ availability, selectedFields, counts, inspected, selected }).replace(/</g, String.fromCharCode(92) + 'u003c') %></script>
 <script>
   const settings = document.getElementById('report-form');
   const disclosure = document.getElementById('report-settings');
   const fieldsPanel = document.getElementById('report-fields');
-  const openInput = settings.elements.settingsOpen;
-  const currentPair = () => JSON.stringify([settings.elements.pre.value, settings.elements.post.value]);
-  let loadedPair = <%- JSON.stringify(pair).replace(/</g, '\u003c') %>;
-  let fieldRequest = 0;
-  const focusFields = () => {
-    (fieldsPanel.querySelector('input[type="checkbox"]') || fieldsPanel).focus();
-    fieldsPanel.scrollIntoView({ block: 'nearest' });
-  };
-  async function loadFields(focus) {
-    if (loadedPair === currentPair()) { if (focus) focusFields(); return; }
-    const request = ++fieldRequest;
-    const pair = currentPair();
-    fieldsPanel.textContent = 'Loading report fields…';
-    const query = new URLSearchParams(new FormData(settings));
-    query.set('action', 'settings');
-    query.set('settingsOpen', '1');
-    try {
-      const response = await fetch('/reports?' + query);
-      if (!response.ok || response.redirected) throw new Error('Unavailable settings');
-      const page = new DOMParser().parseFromString(await response.text(), 'text/html');
-      const updated = page.getElementById('report-fields');
-      if (!updated) throw new Error('Unavailable settings');
-      if (request !== fieldRequest || pair !== currentPair()) return;
-      fieldsPanel.replaceChildren(...updated.childNodes);
-      loadedPair = pair;
-    } catch (error) {
-      if (request !== fieldRequest || pair !== currentPair()) return;
-      fieldsPanel.textContent = 'Could not load report fields. Try Report Settings again.';
-    }
-    if (focus && !fieldsPanel.hidden) focusFields();
+  const questionList = document.getElementById('report-questions');
+  const previewPanel = document.getElementById('report-preview');
+  const status = document.getElementById('request-status');
+  const errorPanel = document.getElementById('request-error');
+  let data = JSON.parse(document.getElementById('report-data').textContent);
+  let choices = new Set(data.selectedFields);
+  let selectionKnown = data.inspected;
+  let loadedPair = data.inspected ? JSON.stringify([data.selected.pre, data.selected.post]) : null;
+  let revision = 0;
+  let metadataSequence = 0;
+  let previewSequence = 0;
+  let metadataRequest = null;
+  let previewRequest = null;
+  let metadataBusy = false;
+  let focusAfterLoad = false;
+  let removed = [];
+  const label = (field) => field.replace(/_/g, ' ').replace(/(\d+)to(\d+)/g, '$1-$2');
+  const pair = () => JSON.stringify([settings.elements.pre.value, settings.elements.post.value]);
+  const hasFiles = () => Boolean(settings.elements.pre.value && settings.elements.post.value);
+  const currentMetadata = () => loadedPair === pair();
+  function setStatus(text) { if (status.textContent !== text) status.textContent = text; }
+  function clearError() { errorPanel.hidden = true; }
+  function showError(message, auth = false, retry = false) {
+    errorPanel.querySelector('span').textContent = message;
+    errorPanel.querySelector('a').hidden = !auth;
+    errorPanel.querySelector('[data-retry-availability]').hidden = !retry;
+    errorPanel.hidden = false;
+    errorPanel.scrollIntoView({ block: 'nearest' });
   }
-  disclosure.addEventListener('click', (event) => {
-    event.preventDefault();
-    const open = disclosure.getAttribute('aria-expanded') !== 'true';
-    disclosure.setAttribute('aria-expanded', String(open));
-    fieldsPanel.hidden = !open;
-    openInput.value = open ? '1' : '0';
-    if (open) loadFields(true);
-    else disclosure.focus();
-  });
-  settings.addEventListener('change', (event) => {
-    const outdated = document.getElementById('report-outdated');
-    if (outdated) outdated.hidden = false;
-    if (event.target.name === 'pre' || event.target.name === 'post') {
-      ++fieldRequest;
-      if (!fieldsPanel.hidden) loadFields(false);
+  function updateButtons() {
+    settings.querySelectorAll('button[type="submit"]').forEach((button) => {
+      button.disabled = metadataBusy || (hasFiles() && !currentMetadata());
+    });
+  }
+  function syncUrl(action = 'settings') {
+    const query = new URLSearchParams(new FormData(settings));
+    query.delete('print'); query.set('action', action);
+    history.replaceState(history.state, '', '/reports?' + query);
+  }
+  function markOutdated() {
+    document.querySelectorAll('[data-report-outdated]').forEach((notice) => { notice.hidden = false; });
+  }
+  function updateReadiness() {
+    const selected = data.availability.filter((field) => choices.has(field.column));
+    const ready = currentMetadata() ? selected.filter((field) => field.comparable).length : 0;
+    const summary = `${ready} of ${choices.size} selected questions ready`;
+    const announcement = document.getElementById('readiness-status');
+    if (announcement.textContent !== summary) announcement.textContent = summary;
+    document.getElementById('response-counts').textContent = currentMetadata() && data.counts ?
+      `${data.counts.pre} pre responses · ${data.counts.post} post responses` : 'Choose both survey files and load their availability.';
+    const issues = document.getElementById('readiness-issues');
+    issues.replaceChildren();
+    if (currentMetadata()) selected.filter((field) => !field.comparable).forEach((field) => {
+      const item = document.createElement('li');
+      const name = document.createElement('strong'); name.textContent = label(field.column);
+      item.append(name); field.reasons.forEach((reason) => { item.append(document.createElement('br'), document.createTextNode(reason)); }); issues.append(item);
+    });
+    const lost = document.getElementById('removed-questions');
+    lost.hidden = removed.length === 0;
+    lost.textContent = removed.length ? 'Previously selected questions no longer present in either file: ' + removed.map(label).join(', ') + '.' : '';
+  }
+  function renderQuestions() {
+    questionList.replaceChildren();
+    const legend = document.createElement('legend'); legend.textContent = 'Report questions'; questionList.append(legend);
+    data.availability.forEach((field, index) => {
+      const row = document.createElement('p');
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.name = 'fields'; input.value = field.column; input.id = 'question-' + index; input.checked = choices.has(field.column);
+      input.setAttribute('aria-describedby', 'question-info-' + index);
+      const name = document.createElement('label'); name.htmlFor = input.id; name.textContent = label(field.column);
+      const info = document.createElement('small'); info.id = 'question-info-' + index;
+      (field.comparable ? ['Ready.'] : field.reasons).forEach((reason) => { info.append(document.createTextNode(reason), document.createElement('br')); });
+      info.append(document.createTextNode(`Pre: ${field.pre.usableCount} usable · Post: ${field.post.usableCount} usable`));
+      row.append(input, document.createTextNode(' '), name, document.createElement('br'), info); questionList.append(row);
+    });
+    if (!data.availability.length) { const text = document.createElement('p'); text.textContent = 'No survey questions were detected in these files.'; questionList.append(text); }
+  }
+  function focusQuestions() {
+    (questionList.querySelector('input[type="checkbox"]') || fieldsPanel).focus();
+    fieldsPanel.scrollIntoView({ block: 'nearest' });
+  }
+  async function readResponse(response) {
+    if (response.redirected || response.status === 401 || response.status === 403) {
+      const error = new Error('Your session expired. Log in again to continue.'); error.auth = true; throw error;
     }
+    if (!(response.headers.get('content-type') || '').includes('application/json') || response.status >= 500) {
+      throw new Error('The report service could not complete this request. Try again.');
+    }
+    return response.json();
+  }
+  async function loadAvailability(focus = false) {
+    focusAfterLoad = focusAfterLoad || focus;
+    if (currentMetadata()) { if (focusAfterLoad) focusQuestions(); focusAfterLoad = false; return; }
+    metadataRequest?.abort();
+    const sequence = ++metadataSequence;
+    if (!hasFiles()) {
+      metadataBusy = false; fieldsPanel.setAttribute('aria-busy', 'false');
+      questionList.replaceChildren(); const prompt = document.createElement('p'); prompt.textContent = 'Choose both survey files to inspect their questions.'; questionList.append(prompt);
+      updateButtons(); updateReadiness(); setStatus('Choose both survey files.');
+      if (focusAfterLoad) focusQuestions(); focusAfterLoad = false; return;
+    }
+    const requestPair = pair();
+    metadataRequest = new AbortController(); metadataBusy = true;
+    fieldsPanel.setAttribute('aria-busy', 'true'); updateButtons(); clearError(); setStatus('Checking survey questions…');
+    questionList.replaceChildren(); const loading = document.createElement('p'); loading.textContent = 'Loading report questions…'; questionList.append(loading);
+    try {
+      const query = new URLSearchParams({ pre: settings.elements.pre.value, post: settings.elements.post.value, response: 'availability' });
+      const payload = await readResponse(await fetch('/reports?' + query, { signal: metadataRequest.signal }));
+      if (sequence !== metadataSequence || requestPair !== pair()) return;
+      if (payload.error) throw new Error(payload.error);
+      const columns = new Set(payload.availability.map((field) => field.column));
+      removed = selectionKnown ? [...new Set([...removed, ...choices])].filter((field) => !columns.has(field)) : [];
+      choices = selectionKnown ? new Set([...choices].filter((field) => columns.has(field))) :
+        new Set(payload.availability.filter((field) => field.comparable).map((field) => field.column));
+      data = payload; selectionKnown = true; loadedPair = requestPair;
+      renderQuestions(); updateReadiness(); syncUrl(); setStatus('Question availability updated.');
+      if (focusAfterLoad && !fieldsPanel.hidden) focusQuestions();
+      focusAfterLoad = false;
+    } catch (error) {
+      if (sequence !== metadataSequence || requestPair !== pair() || error.name === 'AbortError') return;
+      questionList.replaceChildren(); const failure = document.createElement('p'); failure.textContent = 'Question availability could not be loaded.'; questionList.append(failure);
+      showError(error.message || 'Could not inspect those files. Try again.', Boolean(error.auth), !error.auth);
+      setStatus('Availability could not be loaded.');
+    } finally {
+      if (sequence === metadataSequence) { metadataBusy = false; fieldsPanel.setAttribute('aria-busy', 'false'); updateButtons(); updateReadiness(); }
+    }
+  }
+  async function previewReport() {
+    previewRequest?.abort(); const sequence = ++previewSequence; const requestRevision = revision;
+    previewRequest = new AbortController(); previewPanel.setAttribute('aria-busy', 'true'); clearError(); setStatus('Preparing report preview…');
+    const query = new URLSearchParams(new FormData(settings)); query.delete('print'); query.set('response', 'preview');
+    try {
+      const payload = await readResponse(await fetch('/reports?' + query, { signal: previewRequest.signal }));
+      if (sequence !== previewSequence || requestRevision !== revision) return;
+      if (payload.inspected) {
+        const columns = new Set(payload.availability.map((field) => field.column));
+        removed = [...new Set([...removed, ...choices])].filter((field) => !columns.has(field));
+        data = payload; choices = new Set(payload.selectedFields); loadedPair = pair(); selectionKnown = true;
+        renderQuestions(); updateReadiness();
+      }
+      if (payload.error) {
+        showError(payload.error);
+        if (!previewPanel.querySelector('[data-report-preview]')) previewPanel.innerHTML = payload.html;
+        if (payload.errorCode === 'no_questions') { fieldsPanel.hidden = false; disclosure.setAttribute('aria-expanded', 'true'); settings.elements.settingsOpen.value = '1'; focusQuestions(); }
+        setStatus('Preview could not be prepared.'); return;
+      }
+      previewPanel.innerHTML = payload.html;
+      document.querySelectorAll('[data-report-feedback]').forEach((message) => { message.hidden = true; });
+      const heading = previewPanel.querySelector('#preview-title');
+      if (heading) { heading.focus(); heading.scrollIntoView({ block: 'start' }); }
+      const generated = document.querySelector('[data-generated-report]'); if (generated) generated.hidden = true;
+      syncUrl('preview'); setStatus('Report preview updated.');
+    } catch (error) {
+      if (sequence !== previewSequence || requestRevision !== revision || error.name === 'AbortError') return;
+      showError(error.message || 'Could not prepare the preview. Try again.', Boolean(error.auth)); setStatus('Preview could not be prepared.');
+    } finally { if (sequence === previewSequence) previewPanel.setAttribute('aria-busy', 'false'); }
+  }
+  disclosure.addEventListener('click', () => {
+    const open = disclosure.getAttribute('aria-expanded') !== 'true';
+    disclosure.setAttribute('aria-expanded', String(open)); fieldsPanel.hidden = !open; settings.elements.settingsOpen.value = open ? '1' : '0';
+    if (open) { if (currentMetadata()) focusQuestions(); else if (metadataBusy) focusAfterLoad = true; else loadAvailability(true); }
+    else disclosure.focus();
+    if (currentMetadata()) syncUrl();
+  });
+  errorPanel.querySelector('[data-retry-availability]').addEventListener('click', () => loadAvailability(true));
+  settings.addEventListener('change', (event) => {
+    if (!['pre', 'post', 'fields'].includes(event.target.name)) return;
+    ++revision; ++previewSequence; previewRequest?.abort(); previewPanel.setAttribute('aria-busy', 'false'); markOutdated(); clearError();
+    if (event.target.name === 'fields') {
+      if (event.target.checked) choices.add(event.target.value); else choices.delete(event.target.value);
+      updateReadiness(); syncUrl(); setStatus('');
+    } else { ++metadataSequence; metadataRequest?.abort(); loadedPair = null; updateReadiness(); loadAvailability(); }
   });
   settings.addEventListener('submit', (event) => {
-    // Only an explicit Generate submission requests automatic printing.
-    const flag = settings.querySelector('input[name="print"]');
-    if (flag) flag.remove();
-    if (event.submitter && event.submitter.value === 'generate') {
-      const input = document.createElement('input');
-      input.type = 'hidden'; input.name = 'print'; input.value = '1';
-      settings.append(input);
+    if (event.submitter?.value === 'preview') { event.preventDefault(); previewReport(); return; }
+    if (hasFiles() && !currentMetadata()) { event.preventDefault(); showError('Load question availability before generating the report.', false, true); return; }
+    previewRequest?.abort();
+    settings.querySelector('input[name="print"]')?.remove();
+    if (event.submitter?.value === 'generate') {
+      const input = document.createElement('input'); input.type = 'hidden'; input.name = 'print'; input.value = '1'; settings.append(input);
     }
   });
-  const printControls = [...document.querySelectorAll('[data-print-controls]')];
   const printState = new Map();
   window.addEventListener('beforeprint', () => {
-    printControls.forEach((section) => { if (!printState.has(section)) printState.set(section, section.hidden); section.hidden = true; });
+    document.querySelectorAll('[data-print-controls]').forEach((section) => { if (!printState.has(section)) printState.set(section, section.hidden); section.hidden = true; });
   });
-  window.addEventListener('afterprint', () => {
-    printState.forEach((hidden, section) => { section.hidden = hidden; });
-    printState.clear();
-  });
-  document.querySelectorAll('[data-report-print]').forEach((button) => {
-    button.addEventListener('click', () => window.print());
-  });
+  window.addEventListener('afterprint', () => { printState.forEach((hidden, section) => { section.hidden = hidden; }); printState.clear(); });
+  document.querySelectorAll('[data-report-print]').forEach((button) => { button.addEventListener('click', () => window.print()); });
   const printUrl = new URL(window.location.href);
-  if (printUrl.searchParams.has('print')) {
-    printUrl.searchParams.delete('print');
-    history.replaceState(history.state, '', printUrl);
-  }
+  if (printUrl.searchParams.has('print')) { printUrl.searchParams.delete('print'); history.replaceState(history.state, '', printUrl); }
   <% if (autoPrint) { %>
-    // The URL is consumed before printing; reload/history must not reopen it.
-    if (performance.getEntriesByType('navigation')[0]?.type === 'navigate') {
-      window.addEventListener('load', () => window.print(), { once: true });
-    }
+    if (performance.getEntriesByType('navigation')[0]?.type === 'navigate') window.addEventListener('load', () => window.print(), { once: true });
   <% } %>
+  updateButtons();
 </script>
 <%- include('../partials/footer') %>
+<% } %>
