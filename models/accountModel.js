@@ -1,18 +1,11 @@
 // MODEL - Account Management (Victoria)
-// Accounts are saved in data/users.json. Swap for a database later.
-const fs = require("fs");
-const path = require("path");
+// Accounts are saved in the "users" table in Postgres (see db/database.js).
+// All functions are async: call them with "await".
 const bcrypt = require("bcryptjs");
+const db = require("../db/database");
 
-const DATA_FILE = path.join(__dirname, "..", "data", "users.json");
-
-// Create data/users.json if it doesn't exist
-fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
-
-const readAll = () => JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-const saveAll = (users) =>
-  fs.writeFileSync(DATA_FILE, JSON.stringify(users, null, 2));
+// Columns renamed so the rest of the app sees the same field names as before
+const COLUMNS = `id, name, email, password_hash AS "passwordHash", created_at AS "createdAt"`;
 
 // Never send the password hash to a view
 const publicInfo = ({ id, name, email, createdAt }) => ({
@@ -24,33 +17,37 @@ const publicInfo = ({ id, name, email, createdAt }) => ({
 
 module.exports = {
   // All accounts (without passwords)
-  getAll() {
-    return readAll().map(publicInfo);
+  async getAll() {
+    const users = await db.all(
+      `SELECT ${COLUMNS} FROM users ORDER BY created_at`,
+    );
+    return users.map(publicInfo);
   },
 
-  findByEmail(email) {
-    return readAll().find((u) => u.email === email.trim().toLowerCase());
+  // Full account (including passwordHash) or undefined
+  async findByEmail(email) {
+    return db.get(`SELECT ${COLUMNS} FROM users WHERE email = $1`, [
+      email.trim().toLowerCase(),
+    ]);
   },
 
   // Save a new account with a hashed password
-  create({ name, email, password }) {
-    const users = readAll();
-    const user = {
-      id: Date.now(),
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      passwordHash: bcrypt.hashSync(password, 10),
-      createdAt: new Date().toISOString(),
-    };
-    users.push(user);
-    saveAll(users);
+  async create({ name, email, password }) {
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await db.get(
+      `INSERT INTO users (name, email, password_hash)
+       VALUES ($1, $2, $3)
+       RETURNING ${COLUMNS}`,
+      [name.trim(), email.trim().toLowerCase(), passwordHash],
+    );
     return publicInfo(user);
   },
 
   // Returns the account if the email + password match, otherwise null
-  checkLogin(email, password) {
-    const user = this.findByEmail(email);
-    if (!user || !bcrypt.compareSync(password, user.passwordHash)) return null;
+  async checkLogin(email, password) {
+    const user = await this.findByEmail(email);
+    if (!user || !(await bcrypt.compare(password, user.passwordHash)))
+      return null;
     return publicInfo(user);
   },
 };

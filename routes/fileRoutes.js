@@ -14,18 +14,15 @@ const fileModel = require("../models/fileModel");
 
 // ---- Upload settings (multer) ----
 const upload = multer({
-  storage: multer.diskStorage({
-    // WHERE to save: uploads/pre or uploads/post,
-    // based on the :type part of the URL
-    destination: (req, file, cb) =>
-      cb(null, path.join(fileModel.UPLOAD_DIR, req.params.type)),
+  // Keep the upload in memory (req.file.buffer) instead of saving it to disk.
+  // The controller then stores it in the database (Vercel can't save files to disk).
+  storage: multer.memoryStorage(),
 
-    // WHAT to name it: keep the original file name.
-    // (Uploading the same name again replaces the old file.)
-    filename: (req, file, cb) => cb(null, file.originalname),
-  }),
+  // Vercel rejects requests bigger than about 4.5 MB, so stop at 4 MB
+  // with a clear error instead.
+  limits: { fileSize: 4 * 1024 * 1024 },
 
-  // WHICH files to accept. Runs BEFORE the file is saved.
+  // WHICH files to accept. Runs BEFORE the file is read.
   // cb(null, true) = accept, cb(null, false) = reject.
   // The tag fields come before the file in the form, so req.body
   // already has them here.
@@ -53,6 +50,17 @@ const upload = multer({
   },
 });
 
+// Runs multer, and turns a "file too large" error into a normal
+// message for the controller instead of crashing the request.
+const receiveFile = (req, res, next) =>
+  upload.single("surveyFile")(req, res, (err) => {
+    if (err && err.code === "LIMIT_FILE_SIZE") {
+      req.uploadError = "That file is too large (4 MB max).";
+      return next();
+    }
+    next(err);
+  });
+
 // Reads normal form fields (like the "Type DELETE" box) into req.body
 const readForm = express.urlencoded({ extended: false });
 
@@ -65,9 +73,9 @@ router.get("/", controller.index);
 router.get("/:type", controller.section);
 
 // POST /files/pre/upload or /files/post/upload -> check tags, save file, save tags
-// upload.single('surveyFile') runs FIRST and saves the file.
+// receiveFile runs FIRST and reads the file into memory (req.file.buffer).
 // 'surveyFile' must match name="surveyFile" on the file input in the view.
-router.post("/:type/upload", upload.single("surveyFile"), controller.upload);
+router.post("/:type/upload", receiveFile, controller.upload);
 
 // POST /files/pre/survey.csv/delete -> delete that file, then go back (stories #17, #18)
 // It's POST (not GET) because it changes data.

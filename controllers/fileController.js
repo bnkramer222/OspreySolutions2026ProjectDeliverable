@@ -3,9 +3,10 @@
 // The controller is the "middle man": a route sends a request
 // here, the controller gets data from the model, then sends back
 // a page (view) or a file.
+// Model calls hit the database, so they're async: every one uses
+// "await", and errors go to next(err) (the error page in app.js).
 // ============================================================
 
-const fs = require("fs");
 const path = require("path");
 const fileModel = require("../models/fileModel");
 
@@ -13,10 +14,10 @@ const fileModel = require("../models/fileModel");
 const LABELS = { pre: "Pre-Survey", post: "Post-Survey" };
 
 // Builds the data for one section: { type, label, files }
-const buildSection = (type) => ({
+const buildSection = async (type) => ({
   type,
   label: LABELS[type],
-  files: fileModel.getAll(type),
+  files: await fileModel.getAll(type),
 });
 
 // Data every version of the page needs
@@ -34,41 +35,49 @@ const sendBack = (res, url, key, text) =>
 
 // GET /files
 // Shows BOTH the Pre and Post sections on one page.
-exports.index = (req, res) => {
-  res.render("files/index", {
-    title: "Uploaded files",
-    basePath: "/files", // where to come back to after a delete
-    sections: fileModel.TYPES.map(buildSection), // [pre section, post section]
-    ...pageData(req),
-  });
+exports.index = async (req, res, next) => {
+  try {
+    res.render("files/index", {
+      title: "Uploaded files",
+      basePath: "/files", // where to come back to after a delete
+      sections: await Promise.all(fileModel.TYPES.map(buildSection)), // [pre section, post section]
+      ...pageData(req),
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // GET /files/pre  or  GET /files/post
 // Shows ONLY that one section (this is where the dashboard buttons go).
-exports.section = (req, res) => {
+exports.section = async (req, res, next) => {
   const type = req.params.type; // 'pre' or 'post', taken from the URL
 
   if (!fileModel.TYPES.includes(type)) {
     return res.status(404).send("Page not found");
   }
 
-  res.render("files/index", {
-    title: `${LABELS[type]} files`,
-    basePath: `/files/${type}`,
-    sections: [buildSection(type)],
-    ...pageData(req),
-  });
+  try {
+    res.render("files/index", {
+      title: `${LABELS[type]} files`,
+      basePath: `/files/${type}`,
+      sections: [await buildSection(type)],
+      ...pageData(req),
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // POST /files/pre/upload  or  POST /files/post/upload
 // By the time this runs, multer (in the routes file) has ALREADY
-// checked the tags and saved the file to disk. Here we save its
-// details + tags to the database (story #41).
-exports.upload = (req, res) => {
+// checked the tags and read the file into memory (req.file.buffer).
+// Here we save the file + its details + tags to the database (story #41).
+exports.upload = async (req, res, next) => {
   const { type } = req.params;
   const back = req.body.returnTo === "/files" ? "/files" : `/files/${type}`;
 
-  // multer refused the file (missing tags or wrong file type)
+  // multer refused the file (missing tags, wrong file type or too large)
   if (req.uploadError) return sendBack(res, back, "error", req.uploadError);
   if (!req.file)
     return sendBack(
@@ -78,12 +87,16 @@ exports.upload = (req, res) => {
       "Please choose a CSV or Excel file to upload.",
     );
 
-  fileModel.save(type, req.file.originalname, req.file.size, {
-    program: req.body.program,
-    school: req.body.school.trim(),
-    cohort: (req.body.cohort || "").trim(),
-    year: req.body.year,
-  });
+  try {
+    await fileModel.save(type, req.file.originalname, req.file.buffer, {
+      program: req.body.program,
+      school: req.body.school.trim(),
+      cohort: (req.body.cohort || "").trim(),
+      year: req.body.year,
+    });
+  } catch (err) {
+    return next(err);
+  }
 
   sendBack(
     res,
@@ -95,22 +108,30 @@ exports.upload = (req, res) => {
 
 // GET /files/pre/survey.csv  (View button)
 // Sends the file to the browser so the user can see it.
-exports.view = (req, res) => {
-  const filePath = fileModel.getPath(req.params.type, req.params.name);
+exports.view = async (req, res, next) => {
+  const { type, name } = req.params;
 
-  if (!fileModel.TYPES.includes(req.params.type) || !fs.existsSync(filePath)) {
+  if (!fileModel.TYPES.includes(type)) {
     return res.status(404).send("File not found");
   }
 
-  // CSV files display as text; Excel files download
-  res.sendFile(filePath);
+  try {
+    const file = await fileModel.getFile(type, path.basename(name));
+    if (!file || !file.content) return res.status(404).send("File not found");
+
+    // Same content type as before (.csv -> text/csv, .xlsx -> Excel)
+    res.type(path.extname(file.name));
+    res.send(file.content);
+  } catch (err) {
+    next(err);
+  }
 };
 
 // POST /files/pre/survey.csv/delete
 // STORY #17: delete a file.  STORY #18: confirm it was deleted.
 // The pop-up on the page sends the word the user typed (confirmText)
 // and which page they were on (returnTo).
-exports.remove = (req, res) => {
+exports.remove = async (req, res, next) => {
   const { type } = req.params;
   const name = path.basename(req.params.name); // just the file name, no folders
 
@@ -132,7 +153,12 @@ exports.remove = (req, res) => {
     );
   }
 
-  const result = fileModel.remove(type, name);
+  let result;
+  try {
+    result = await fileModel.remove(type, name);
+  } catch (err) {
+    return next(err);
+  }
 
   if (result === "deleted") {
     return sendBack(
