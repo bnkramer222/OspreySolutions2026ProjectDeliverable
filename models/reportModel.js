@@ -1,6 +1,7 @@
 // MODEL - Report Generation (Joshua)
 // Reads the CSV files uploaded in the Pre and Post sections and compares them.
-const fs = require("fs");
+// The CSVs are stored in the database (see fileModel.getFile).
+// listCsvFiles() and build() are async: call them with "await".
 const { parse } = require("csv-parse/sync");
 const fileModel = require("./fileModel");
 
@@ -16,16 +17,24 @@ const INFO_COLUMNS = [
 ];
 
 // Retain headers even when a readable CSV contains no data records.
-function readCsv(type, name) {
+async function readCsv(type, name) {
+  const file = await fileModel.getFile(type, name);
+  if (!file || !file.content) {
+    throw new Error(`File not found: ${type}/${name}`);
+  }
   let columns = [];
-  const rows = parse(fs.readFileSync(fileModel.getPath(type, name)), {
-    columns: (names) => { columns = names; return names; },
+  const rows = parse(file.content, {
+    columns: (names) => {
+      columns = names;
+      return names;
+    },
     skip_empty_lines: true,
     bom: true,
     trim: true,
   });
   return { rows, columns };
 }
+
 // Numbers -> average, Yes/No -> % Yes, anything else -> skipped
 function summarize(values) {
   if (values.length === 0) return null;
@@ -50,39 +59,67 @@ function summarize(values) {
 // column produces no summary, rather than silently dropping invalid answers.
 function inspectColumn(file, column) {
   const exists = file.columns.includes(column);
-  const values = file.rows.map((r) => r[column]).filter((value) => value !== undefined && value !== "");
+  const values = file.rows
+    .map((r) => r[column])
+    .filter((value) => value !== undefined && value !== "");
   const answerCount = values.length;
   const summary = exists ? summarize(values) : null;
   return {
     summary,
-    metadata: { exists, kind: summary ? summary.kind : null, answerCount, usableCount: summary ? answerCount : 0 },
+    metadata: {
+      exists,
+      kind: summary ? summary.kind : null,
+      answerCount,
+      usableCount: summary ? answerCount : 0,
+    },
   };
 }
 
 module.exports = {
-  listCsvFiles(type) {
-    return fileModel.getAll(type).filter((f) => f.name.toLowerCase().endsWith(".csv"));
+  async listCsvFiles(type) {
+    const files = await fileModel.getAll(type);
+    return files.filter((f) => f.name.toLowerCase().endsWith(".csv"));
   },
-  build(preName, postName) {
-    const pre = readCsv("pre", preName);
-    const post = readCsv("post", postName);
-    const fields = [...new Set([...pre.columns, ...post.columns])].filter((c) => c !== "" && !INFO_COLUMNS.includes(c));
+  async build(preName, postName) {
+    const [pre, post] = await Promise.all([
+      readCsv("pre", preName),
+      readCsv("post", postName),
+    ]);
+    const fields = [...new Set([...pre.columns, ...post.columns])].filter(
+      (c) => c !== "" && !INFO_COLUMNS.includes(c),
+    );
     const availability = [];
     const rows = [];
     fields.forEach((column) => {
       const before = inspectColumn(pre, column);
       const after = inspectColumn(post, column);
       const reasons = [];
-      for (const [side, info] of [["pre", before.metadata], ["post", after.metadata]]) {
+      for (const [side, info] of [
+        ["pre", before.metadata],
+        ["post", after.metadata],
+      ]) {
         if (!info.exists) reasons.push(`Missing from ${side}-survey.`);
-        else if (info.answerCount === 0) reasons.push(`No usable ${side}-survey answers.`);
-        else if (!info.kind) reasons.push(`Unsupported ${side}-survey answer type.`);
+        else if (info.answerCount === 0)
+          reasons.push(`No usable ${side}-survey answers.`);
+        else if (!info.kind)
+          reasons.push(`Unsupported ${side}-survey answer type.`);
       }
-      if (before.summary && after.summary && before.summary.kind !== after.summary.kind) {
+      if (
+        before.summary &&
+        after.summary &&
+        before.summary.kind !== after.summary.kind
+      ) {
         reasons.push("Pre/post answer types do not match.");
       }
       const comparable = reasons.length === 0;
-      availability.push({ column, pre: before.metadata, post: after.metadata, comparable, reasons, reason: reasons.join(" ") });
+      availability.push({
+        column,
+        pre: before.metadata,
+        post: after.metadata,
+        comparable,
+        reasons,
+        reason: reasons.join(" "),
+      });
       if (comparable) {
         rows.push({
           column,
@@ -95,7 +132,18 @@ module.exports = {
       }
     });
     const preIds = new Set(pre.rows.map((r) => r.participant_id));
-    const matched = post.rows.filter((r) => preIds.has(r.participant_id)).length;
-    return { preName, postName, preCount: pre.rows.length, postCount: post.rows.length, matched, fields, availability, rows };
+    const matched = post.rows.filter((r) =>
+      preIds.has(r.participant_id),
+    ).length;
+    return {
+      preName,
+      postName,
+      preCount: pre.rows.length,
+      postCount: post.rows.length,
+      matched,
+      fields,
+      availability,
+      rows,
+    };
   },
 };
