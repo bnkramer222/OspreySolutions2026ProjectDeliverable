@@ -22,7 +22,7 @@ exports.index = async (req, res, next) => {
 
 // GET /account/login
 exports.showLogin = (req, res) => {
-  res.render("account/login", { title: "Log In", error: null, email: "" });
+  res.render("account/login", { title: "Log In", error: null, email: "", notice: req.query.notice || null });
 };
 
 // POST /account/login
@@ -51,7 +51,8 @@ exports.showRegister = (req, res) => {
   res.render("account/register", {
     title: "Create Account",
     error: null,
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
   });
 };
@@ -63,7 +64,8 @@ exports.register = async (req, res, next) => {
     res.render("account/register", {
       title: "Create Account",
       error,
-      name,
+      firstName,
+      lastName,
       email,
     });
 
@@ -88,4 +90,52 @@ exports.register = async (req, res, next) => {
 // POST /account/logout
 exports.logout = (req, res) => {
   req.session.destroy(() => res.redirect("/account/login"));
+};
+
+// Profile actions
+exports.changePassword = (req, res) => {
+  const { currentPassword = "", newPassword = "", confirmPassword = "" } = req.body;
+  const id = req.session.user.id;
+  if (!accountModel.verifyPassword(id, currentPassword))
+    return res.redirect("/account?error=" + encodeURIComponent("Current password is incorrect."));
+  if (newPassword.length < 8 || newPassword !== confirmPassword)
+    return res.redirect("/account?error=" + encodeURIComponent("New passwords must match and be at least 8 characters."));
+  accountModel.changePassword(id, newPassword);
+  req.session.destroy(() => res.redirect("/account/login?notice=Password updated. Please sign in."));
+};
+
+exports.deleteAccount = (req, res) => {
+  const { password = "" } = req.body;
+  if (!accountModel.verifyPassword(req.session.user.id, password))
+    return res.redirect("/account?error=" + encodeURIComponent("Password incorrect. Account not deleted."));
+  accountModel.deleteAccount(req.session.user.id);
+  req.session.destroy(() => res.redirect("/account/login?notice=Account deleted."));
+};
+
+// Simplified local-demo password reset (not safe for public deployment).
+const attempts = new Map();
+exports.showForgot = (req, res) => res.render('account/forgot', { title: 'Forgot Password', error: null, notice: null, email: '', firstName: '', lastName: '' });
+exports.requestReset = (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const firstName = String(req.body.firstName || '').trim();
+  const lastName = String(req.body.lastName || '').trim();
+  const password = String(req.body.password || '');
+  const confirm = String(req.body.confirmPassword || '');
+  const key = req.ip || 'local';
+  const now = Date.now();
+  let entry = attempts.get(key) || { count: 0, until: now + 15 * 60 * 1000 };
+  if (now > entry.until) entry = { count: 0, until: now + 15 * 60 * 1000 };
+  const renderError = (error, status = 400) => res.status(status).render('account/forgot', { title: 'Forgot Password', error, notice: null, email, firstName, lastName });
+  if (entry.count >= 5) return renderError('Too many attempts. Try again in 15 minutes.', 429);
+  if (password.length < 8 || password !== confirm) return renderError('Passwords must match and contain at least 8 characters.');
+  const user = accountModel.findByEmail(email);
+  if (!user || !firstName || !lastName ||
+      user.firstName.trim().toLowerCase() !== firstName.toLowerCase() ||
+      user.lastName.trim().toLowerCase() !== lastName.toLowerCase()) {
+    entry.count++; attempts.set(key, entry);
+    return renderError('Account information does not match.');
+  }
+  accountModel.changePassword(user.id, password);
+  attempts.delete(key);
+  res.redirect('/account/login?notice=' + encodeURIComponent('Password reset. Please sign in.'));
 };

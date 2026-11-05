@@ -7,6 +7,7 @@
     <h1>Log In</h1>
     <p class="auth-subtitle">Planned to A.T. Impact Platform</p>
 
+    <% if (notice) { %><p class="auth-success"><%= notice %></p><% } %>
     <% if (error) { %>
       <p class="auth-error"><%= error %></p>
     <% } %>
@@ -19,6 +20,7 @@
       <input type="password" name="password" required>
     </label>
 
+    <p class="auth-switch"><a href="/account/forgot">Forgot password?</a></p>
     <button type="submit">Log In</button>
     <p class="auth-switch">No account yet? <a href="/account/register">Create one</a></p>
   </form>

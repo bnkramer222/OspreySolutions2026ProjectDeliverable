@@ -14,6 +14,27 @@ const publicInfo = ({ id, name, email, createdAt }) => ({
   email,
   createdAt,
 });
+if (fs.existsSync(legacyPath)) {
+  try {
+    const legacy = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
+    if (Array.isArray(legacy)) migration(legacy);
+  } catch (err) {
+    // Do not start with a partial migration if the legacy file is malformed.
+    throw new Error(`Could not import legacy users.json: ${err.message}`);
+  }
+}
+
+const publicInfo = (row) => row ? ({
+  id: row.id,
+  firstName: row.first_name,
+  lastName: row.last_name,
+  name: `${row.first_name} ${row.last_name}`.trim(),
+  email: row.email,
+  createdAt: row.created_at,
+}) : null;
+const byEmail = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE');
+const byId = db.prepare('SELECT * FROM users WHERE id = ?');
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
 module.exports = {
   // All accounts (without passwords)
