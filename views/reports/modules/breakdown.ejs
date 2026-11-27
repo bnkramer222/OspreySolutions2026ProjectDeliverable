@@ -1,0 +1,15 @@
+<% const shown = s.rows.filter((r) => !r.hidden); %>
+<% if (!shown.length) { %><p class="muted">No <%= s.noun %> has enough students to show (privacy minimum).</p><% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><% s.table.columns.forEach((c, i) => { if (i === 5 && !s.hasQuiz) return; %><th class="<%= i ? 'num' : '' %>"><%= c %></th><% }) %></tr></thead>
+    <tbody>
+      <% shown.forEach((r) => { %>
+        <tr><td><strong><%= r.name %></strong></td><td class="num"><%= r.pre %></td><td class="num"><%= r.post %></td><td class="num"><%= r.matched %></td>
+          <td class="num <%= r.conf > 0 ? 'kpi-up' : r.conf < 0 ? 'kpi-down' : '' %>"><%= fmt.signed(r.conf, 2) %></td>
+          <% if (s.hasQuiz) { %><td class="num"><%= fmt.signed(r.quizGain, 0) %></td><% } %>
+          <td class="num"><%= fmt.signed(r.behavior, 0) %></td></tr>
+      <% }) %>
+    </tbody>
+  </table></div>
+<% } %>
+<% if (s.hiddenCount) { %><p class="note" style="margin-top:8px"><%= s.hiddenCount %> <%= s.hiddenCount === 1 ? 'group' : 'groups' %> with too few students hidden for privacy.</p><% } %>

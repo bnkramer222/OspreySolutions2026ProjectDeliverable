@@ -1,0 +1,9 @@
+<% if (!s.items.length) { %><p class="muted">No Yes/No behavior questions in this data.</p><% } else { %>
+  <%- include('../partials/bars', { series: [{ name: 'Pre-survey', color: 'var(--pre)' }, { name: 'Post-survey', color: 'var(--post)' }],
+        max: 100, ticks: [0, 25, 50, 75, 100], tickText: (t) => t + '%', ariaLabel: 'Percent of students answering yes, before and after',
+        items: s.items.map((i) => ({ label: i.q.label, values: [i.pre, i.post], text: [fmt.pct(i.pre), fmt.pct(i.post)] })) }) %>
+  <div class="table-wrap" style="margin-top:12px"><table class="table">
+    <thead><tr><% s.table.columns.forEach((c, i) => { %><th class="<%= i ? 'num' : '' %>"><%= c %></th><% }) %></tr></thead>
+    <tbody><% s.table.rows.forEach((r) => { %><tr><% r.forEach((v, i) => { %><td class="<%= i ? 'num' : '' %>"><%= v %></td><% }) %></tr><% }) %></tbody>
+  </table></div>
+<% } %>

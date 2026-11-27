@@ -1,0 +1,53 @@
+<%#
+  Horizontal bar chart (SVG), drawn on the server so it also prints and
+  exports to PDF. Used by the report modules.
+  Pass: items = [{ label, values: [number|null, ...], text: ['3.4', ...] }]
+        series = [{ name, color }]  (1 series = no legend; 2 = Pre/Post)
+        max = top of the scale, ticks = [0, 25, 50...], tickText = (v) => label
+  Marks: 12px bars, 2px gap between a pair, rounded end away from the axis,
+  value at the tip, hover a bar for its exact value.
+%>
+<%
+  // Room on the right for the longest value label (e.g. "100% (27 of 27)")
+  const longest = Math.max(...items.flatMap((it) => it.text.map((t) => String(t).length)), 3);
+  const W = typeof width === 'number' ? width : 760;
+  const labelW = W < 700 ? 170 : 210, valueW = Math.max(48, longest * 7.5 + 12), plotW = W - labelW - valueW;
+  const barH = 12, gap = 2, rowGap = 16;
+  const groupH = series.length * barH + (series.length - 1) * gap;
+  const rowH = groupH + rowGap;
+  const H = items.length * rowH + 26;
+  const x = (v) => (Math.max(0, Math.min(v, max)) / max) * plotW;
+  const bar = (x0, y, w, h) => {
+    if (w <= 0) return '';
+    const r = Math.min(4, w, h / 2);
+    return `M${x0},${y} h${w - r} a${r},${r} 0 0 1 ${r},${r} v${h - 2 * r} a${r},${r} 0 0 1 -${r},${r} h-${w - r} z`;
+  };
+  const short = (s) => (s.length > 30 ? s.slice(0, 29) + '…' : s);
+%>
+<div class="chart">
+  <% if (series.length > 1) { %>
+    <div class="legend" style="margin-bottom:8px"><% series.forEach((s) => { %><span><i style="background:<%= s.color %>"></i><%= s.name %></span><% }) %></div>
+  <% } %>
+  <svg viewBox="0 0 <%= W %> <%= H %>" role="img" aria-label="<%= ariaLabel %>">
+    <% ticks.forEach((t) => { const tx = labelW + x(t); %>
+      <line x1="<%= tx %>" x2="<%= tx %>" y1="0" y2="<%= H - 22 %>" stroke="#ebe7e3" stroke-width="1" />
+      <text x="<%= tx %>" y="<%= H - 6 %>" font-size="12" text-anchor="middle" fill="#6e6660"><%= tickText(t) %></text>
+    <% }) %>
+    <% items.forEach((it, i) => { const y0 = i * rowH + 4; %>
+      <text x="<%= labelW - 12 %>" y="<%= y0 + groupH / 2 + 5 %>" font-size="14" text-anchor="end"><title><%= it.label %></title><%= short(it.label) %></text>
+      <% series.forEach((s, j) => { const v = it.values[j]; const y = y0 + j * (barH + gap); %>
+        <g>
+          <title><%= s.name ? s.name + ': ' : '' %><%= it.text[j] %> · <%= it.label %></title>
+          <rect x="<%= labelW %>" y="<%= y - 1 %>" width="<%= plotW + valueW %>" height="<%= barH + 2 %>" fill="transparent" />
+          <% if (v !== null && v !== undefined) { %>
+            <path d="<%= bar(labelW, y, Math.max(x(v), 2), barH) %>" style="fill:<%= s.color %>" />
+            <text x="<%= labelW + Math.max(x(v), 2) + 6 %>" y="<%= y + barH - 2 %>" font-size="12" font-weight="<%= j === series.length - 1 ? 700 : 400 %>"><%= it.text[j] %></text>
+          <% } else { %>
+            <text x="<%= labelW + 4 %>" y="<%= y + barH - 2 %>" font-size="12" fill="#6e6660">no data</text>
+          <% } %>
+        </g>
+      <% }) %>
+    <% }) %>
+    <line x1="<%= labelW %>" x2="<%= labelW %>" y1="0" y2="<%= H - 22 %>" stroke="#cfc8c1" stroke-width="1" />
+  </svg>
+</div>
