@@ -124,6 +124,9 @@ async function approve(fileId, userId) {
     const tags = file.pending_tags;
     await tx.query(
       `UPDATE files SET status = 'imported', row_count = $2, scrub_report = $3, staging = NULL, imported_at = now(),
+         size = octet_length(COALESCE(pending_content, content)),
+         uploaded_at = CASE WHEN pending_content IS NULL THEN uploaded_at
+                            ELSE to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') END,
          content = COALESCE(pending_content, content), pending_content = NULL, pending_tags = NULL,
          program = COALESCE($4, program), school = COALESCE($5, school), cohort = COALESCE($6, cohort), year = COALESCE($7, year),
          uploaded_by = COALESCE($8, uploaded_by)

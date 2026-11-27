@@ -83,8 +83,8 @@ module.exports = {
     const existing = await db.get("SELECT id, status FROM files WHERE type = $1 AND name = $2", [type, name]);
     if (existing && existing.status !== "new") {
       await db.run(
-        `UPDATE files SET pending_content = $2, pending_tags = $3, size = $4, uploaded_at = $5, uploaded_by = $6 WHERE id = $1`,
-        [existing.id, content, JSON.stringify(cleanTags), content.length, new Date().toISOString(), userId || null],
+        `UPDATE files SET pending_content = $2, pending_tags = $3 WHERE id = $1`,
+        [existing.id, content, JSON.stringify(cleanTags)],
       );
       return existing.id;
     }
