@@ -1,19 +1,46 @@
+<%#
+  Shared page header (whole app): teal bar with the Planned to A.T. logo,
+  the main menu, and who is signed in.
+  "section" (set in app.js from the URL) highlights the current menu item.
+  Logo files live in public/images/. If they're missing, the logo loads
+  from plannedtoat.org instead, and if that fails the name shows as text.
+%>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><%= title %> | Planned to A.T.</title>
+  <title><%= title %> | Planned to A.T. Impact Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/images/ptat-logo-gray.png">
 </head>
 <body>
-  <nav>
-    <% if (user) { %>
-      <a href="/dashboard">Dashboard</a>
-      <a href="/files">Files</a>
-      <a href="/reports">Reports</a>
-      <a href="/account">Account</a>
-    <% } else { %>
-      <a href="/account/login">Log In</a>
-    <% } %>
-  </nav>
+  <a class="sr-only" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="<%= user ? '/dashboard' : '/account/login' %>">
+        <img src="/images/ptat-logo-white.png" alt="Planned to A.T." width="44" height="44"
+             onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://irp.cdn-website.com/77a9c324/dms3rep/multi/opt/WhiteLogo-211w.png'}else{this.style.display='none'}">
+        <span class="brand-text">Planned to A.T.<small>Impact Platform</small></span>
+      </a>
+      <% if (user) { %>
+        <nav class="main-nav" aria-label="Main">
+          <a href="/dashboard" <%- section === 'dashboard' ? 'aria-current="page"' : '' %>>Dashboard</a>
+          <a href="/files" <%- section === 'files' ? 'aria-current="page"' : '' %>>Survey Files</a>
+          <a href="/reports" <%- section === 'reports' ? 'aria-current="page"' : '' %>>Reports</a>
+        </nav>
+        <div class="user-menu">
+          <a href="/account" title="My account">
+            <span class="avatar" aria-hidden="true"><%= (user.firstName || user.name || '?').charAt(0).toUpperCase() %></span>
+            <span class="user-name"><%= user.firstName || user.name %></span>
+          </a>
+          <form action="/account/logout" method="POST"><button type="submit">Sign out</button></form>
+        </div>
+      <% } %>
+    </div>
+  </header>
+  <div class="accent-bar"></div>
+  <main id="main">

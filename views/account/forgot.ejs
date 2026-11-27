@@ -1,16 +1,19 @@
+<%# VIEW - Forgot Password (Victoria) %>
 <%- include('../partials/header') %>
-<link rel="stylesheet" href="/account.css">
-<div class="auth-page"><section class="auth-card">
-  <div class="feature-icon">🔐</div><h1>Forgot Password?</h1>
-  <p class="auth-subtitle">Enter your account details and choose a new password.</p>
-  <% if (error) { %><p class="auth-error"><%= error %></p><% } %>
-  <form class="account-form" action="/account/forgot" method="POST">
-    <label>Account email<input type="email" name="email" value="<%= email %>" required autocomplete="email"></label>
-    <label>First name<input type="text" name="firstName" value="<%= firstName || '' %>" required autocomplete="given-name"></label>
-    <label>Last name<input type="text" name="lastName" value="<%= lastName || '' %>" required autocomplete="family-name"></label>
-    <label>New password<input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
-    <label>Confirm new password<input type="password" name="confirmPassword" minlength="8" required autocomplete="new-password"></label>
-    <button type="submit">Confirm Password Reset →</button>
+<div class="auth-page">
+  <form class="auth-card" action="/account/forgot" method="POST">
+    <h1>Reset your password</h1>
+    <p class="auth-sub">Enter your account details and choose a new password.</p>
+    <% if (error) { %><div class="alert alert-err" role="alert"><%= error %></div><% } %>
+    <label class="field">Account email<input type="email" name="email" value="<%= email %>" autocomplete="email" required></label>
+    <div class="form-grid">
+      <label class="field">First name<input type="text" name="firstName" value="<%= firstName %>" autocomplete="given-name" required></label>
+      <label class="field">Last name<input type="text" name="lastName" value="<%= lastName %>" autocomplete="family-name" required></label>
+    </div>
+    <label class="field">New password<input type="password" name="password" minlength="8" autocomplete="new-password" required></label>
+    <label class="field">Confirm new password<input type="password" name="confirmPassword" minlength="8" autocomplete="new-password" required></label>
+    <button class="btn" type="submit">Reset password</button>
+    <p class="auth-switch"><a href="/account/login">← Back to sign in</a></p>
   </form>
-  <p class="auth-switch"><a href="/account/login">← Back to sign in</a></p>
-</section></div><%- include('../partials/footer') %>
+</div>
+<%- include('../partials/footer') %>
