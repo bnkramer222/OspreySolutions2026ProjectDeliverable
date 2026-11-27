@@ -3,124 +3,177 @@
 // The controller is the "middle man": a route sends a request
 // here, the controller gets data from the model, then sends back
 // a page (view) or a file.
+// Upload flow (with the data scrubber):
+//   upload -> scrub -> REVIEW page -> admin approves -> rows saved
 // Model calls hit the database, so they're async: every one uses
 // "await", and errors go to next(err) (the error page in app.js).
 // ============================================================
 
 const path = require("path");
 const fileModel = require("../models/fileModel");
+const surveyModel = require("../models/surveyModel");
+const F = require("../models/scrubber/fields");
 
 // Heading text for each section. Add a line here to add a new section.
 const LABELS = { pre: "Pre-Survey", post: "Post-Survey" };
 
-// Builds the data for one section: { type, label, files }
 const buildSection = async (type) => ({
   type,
   label: LABELS[type],
   files: await fileModel.getAll(type),
 });
 
-// Data every version of the page needs
-const pageData = (req) => ({
+// Data every version of the files page needs
+const pageData = async (req) => ({
   programs: fileModel.PROGRAMS, // dropdown choices (story #41)
   years: fileModel.YEARS,
-  success: req.query.success || null, // green banner text, e.g. after upload/delete
+  labels: LABELS,
+  aiUsage: await surveyModel.aiUsage(),
+  success: req.query.success || null, // green banner text
   error: req.query.error || null, // red banner text
 });
 
-// Sends the user back to a page with a green or red message,
-// e.g. /files/pre?success=...  The message shows in a banner.
-const sendBack = (res, url, key, text) =>
-  res.redirect(`${url}?${key}=${encodeURIComponent(text)}`);
+// Sends the user back to a page with a green or red message.
+const sendBack = (res, url, key, text) => res.redirect(`${url}?${key}=${encodeURIComponent(text)}`);
 
-// GET /files
-// Shows BOTH the Pre and Post sections on one page.
+// GET /files  -> both sections.  GET /files/pre or /files/post -> one section.
 exports.index = async (req, res, next) => {
+  const type = req.params.type;
+  if (type && !fileModel.TYPES.includes(type)) return res.status(404).send("Page not found");
   try {
     res.render("files/index", {
-      title: "Uploaded files",
-      basePath: "/files", // where to come back to after a delete
-      sections: await Promise.all(fileModel.TYPES.map(buildSection)), // [pre section, post section]
-      ...pageData(req),
+      title: type ? `${LABELS[type]} files` : "Survey files",
+      basePath: type ? `/files/${type}` : "/files",
+      current: type || "all",
+      sections: await Promise.all((type ? [type] : fileModel.TYPES).map(buildSection)),
+      ...(await pageData(req)),
     });
   } catch (err) {
     next(err);
   }
 };
-
-// GET /files/pre  or  GET /files/post
-// Shows ONLY that one section (this is where the dashboard buttons go).
-exports.section = async (req, res, next) => {
-  const type = req.params.type; // 'pre' or 'post', taken from the URL
-
-  if (!fileModel.TYPES.includes(type)) {
-    return res.status(404).send("Page not found");
-  }
-
-  try {
-    res.render("files/index", {
-      title: `${LABELS[type]} files`,
-      basePath: `/files/${type}`,
-      sections: [await buildSection(type)],
-      ...pageData(req),
-    });
-  } catch (err) {
-    next(err);
-  }
-};
+exports.section = exports.index;
 
 // POST /files/pre/upload  or  POST /files/post/upload
-// By the time this runs, multer (in the routes file) has ALREADY
-// checked the tags and read the file into memory (req.file.buffer).
-// Here we save the file + its details + tags to the database (story #41).
+// multer (routes file) has ALREADY checked the tags and read the file
+// into memory (req.file.buffer). Here we save it, run the scrubber,
+// and send the admin to the review page.
 exports.upload = async (req, res, next) => {
   const { type } = req.params;
   const back = req.body.returnTo === "/files" ? "/files" : `/files/${type}`;
 
-  // multer refused the file (missing tags, wrong file type or too large)
   if (req.uploadError) return sendBack(res, back, "error", req.uploadError);
-  if (!req.file)
-    return sendBack(
-      res,
-      back,
-      "error",
-      "Please choose a CSV or Excel file to upload.",
-    );
+  if (!req.file) return sendBack(res, back, "error", "Please choose a CSV or Excel file to upload.");
 
+  let id;
   try {
-    await fileModel.save(type, req.file.originalname, req.file.buffer, {
-      program: req.body.program,
-      school: req.body.school.trim(),
-      cohort: (req.body.cohort || "").trim(),
-      year: req.body.year,
-    });
+    id = await fileModel.save(
+      type,
+      path.basename(req.file.originalname),
+      req.file.buffer,
+      { program: req.body.program, school: req.body.school.trim(), cohort: (req.body.cohort || "").trim(), year: req.body.year },
+      req.session.user.id,
+    );
   } catch (err) {
     return next(err);
   }
 
-  sendBack(
-    res,
-    back,
-    "success",
-    `"${req.file.originalname}" was uploaded to ${LABELS[type]}.`,
-  );
+  try {
+    await surveyModel.prepare(id);
+  } catch (err) {
+    // The file couldn't be read at all (empty, wrong format...): undo the upload
+    await surveyModel.discard(id).catch(() => {});
+    return sendBack(res, back, "error", `"${req.file.originalname}" couldn't be read: ${err.message}`);
+  }
+  res.redirect(`/files/review/${id}`);
 };
 
-// GET /files/pre/survey.csv  (View button)
-// Sends the file to the browser so the user can see it.
+// POST /files/import/:id -> scrub a file that was uploaded before the scrubber existed
+exports.importStored = async (req, res, next) => {
+  try {
+    await surveyModel.prepare(Number(req.params.id));
+    res.redirect(`/files/review/${req.params.id}`);
+  } catch (err) {
+    if (err.message === "File not found") return res.status(404).send("File not found");
+    sendBack(res, "/files", "error", `That file couldn't be read: ${err.message}`);
+  }
+};
+
+// GET /files/review/:id -> what the scrubber found, before anything is saved
+exports.review = async (req, res, next) => {
+  try {
+    const file = await surveyModel.getStaged(Number(req.params.id));
+    if (!file) return res.status(404).send("File not found");
+    if (!file.staging) return sendBack(res, `/files/${file.type}`, "success", `"${file.name}" has no changes waiting for review.`);
+    const { result, overrides } = file.staging;
+    res.render("files/review", {
+      title: `Review ${file.name}`,
+      file,
+      label: LABELS[file.type],
+      result,
+      rejected: new Set((overrides && overrides.rejected) || []),
+      fieldChoices: F.ALL_FIELDS.map(({ key, label, kind }) => ({ key, label, group: kind ? "Survey questions" : "Student / session details" })),
+      error: req.query.error || null,
+      success: req.query.success || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Reads the admin's choices from the review form into "overrides"
+function readOverrides(body, result) {
+  const columns = {};
+  for (const col of result.columns) {
+    const choice = body[`col_${col.index}`];
+    if (choice && choice !== col.field) columns[col.header] = choice;
+    else if (col.source === "admin") columns[col.header] = col.field; // keep earlier choices
+  }
+  const rejected = result.changes.filter((c) => c.source !== "rule" && !body[`keep_${c.id}`]).map((c) => c.id);
+  return { columns, rejected };
+}
+const sameOverrides = (a, b) => JSON.stringify(a || {}) === JSON.stringify({ columns: (b || {}).columns || {}, rejected: (b || {}).rejected || [] });
+
+// POST /files/review/:id -> re-run the scrubber with the admin's changes
+// POST /files/review/:id/approve -> (re-run if needed, then) save the rows
+exports.saveReview = async (req, res, next) => {
+  const id = Number(req.params.id);
+  const approving = req.path.endsWith("/approve");
+  try {
+    const file = await surveyModel.getStaged(id);
+    if (!file || !file.staging) return res.redirect("/files");
+    const overrides = readOverrides(req.body, file.staging.result);
+    if (!sameOverrides(overrides, file.staging.overrides)) await surveyModel.prepare(id, overrides);
+    if (!approving) return sendBack(res, `/files/review/${id}`, "success", "Updated. Check the preview below.");
+    const count = await surveyModel.approve(id, req.session.user.id);
+    sendBack(res, `/files/${file.type}`, "success", `✓ "${file.name}" imported: ${count} ${count === 1 ? "response" : "responses"} added to ${LABELS[file.type]} data.`);
+  } catch (err) {
+    if (/couldn't|isn't|No survey answers|empty/.test(err.message)) return sendBack(res, `/files/review/${id}`, "error", err.message);
+    next(err);
+  }
+};
+
+// POST /files/review/:id/cancel -> nothing is saved
+exports.cancelReview = async (req, res, next) => {
+  try {
+    const file = await surveyModel.getStaged(Number(req.params.id));
+    if (!file) return res.redirect("/files");
+    await surveyModel.discard(file.id);
+    sendBack(res, `/files/${file.type}`, "success", file.status === "new" ? `Upload of "${file.name}" cancelled. Nothing was saved.` : `The new version of "${file.name}" was discarded. The previous version is unchanged.`);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /files/pre/survey.csv  (View/Download button) -> the original file
 exports.view = async (req, res, next) => {
   const { type, name } = req.params;
-
-  if (!fileModel.TYPES.includes(type)) {
-    return res.status(404).send("File not found");
-  }
-
+  if (!fileModel.TYPES.includes(type)) return res.status(404).send("Page not found");
   try {
     const file = await fileModel.getFile(type, path.basename(name));
     if (!file || !file.content) return res.status(404).send("File not found");
-
-    // Same content type as before (.csv -> text/csv, .xlsx -> Excel)
     res.type(path.extname(file.name));
+    res.attachment(file.name);
     res.send(file.content);
   } catch (err) {
     next(err);
@@ -129,29 +182,15 @@ exports.view = async (req, res, next) => {
 
 // POST /files/pre/survey.csv/delete
 // STORY #17: delete a file.  STORY #18: confirm it was deleted.
-// The pop-up on the page sends the word the user typed (confirmText)
-// and which page they were on (returnTo).
 exports.remove = async (req, res, next) => {
   const { type } = req.params;
-  const name = path.basename(req.params.name); // just the file name, no folders
-
-  if (!fileModel.TYPES.includes(type)) {
-    return res.status(404).send("Page not found");
-  }
-
-  // Only allow going back to our own two pages
+  const name = path.basename(req.params.name);
+  if (!fileModel.TYPES.includes(type)) return res.status(404).send("Page not found");
   const back = req.body.returnTo === "/files" ? "/files" : `/files/${type}`;
 
-  // Double-check the typed word here too, in case the page's
-  // JavaScript was skipped. The file is only deleted if it says DELETE.
-  if ((req.body.confirmText || "").trim() !== "DELETE") {
-    return sendBack(
-      res,
-      back,
-      "error",
-      `"${name}" was not deleted. Type DELETE to confirm.`,
-    );
-  }
+  // Double-check the typed word here too, in case the page's JavaScript was skipped
+  if ((req.body.confirmText || "").trim() !== "DELETE")
+    return sendBack(res, back, "error", `"${name}" was not deleted. Type DELETE to confirm.`);
 
   let result;
   try {
@@ -159,27 +198,7 @@ exports.remove = async (req, res, next) => {
   } catch (err) {
     return next(err);
   }
-
-  if (result === "deleted") {
-    return sendBack(
-      res,
-      back,
-      "success",
-      `✓ "${name}" was deleted. It no longer appears in the list below.`,
-    );
-  }
-  if (result === "missing") {
-    return sendBack(
-      res,
-      back,
-      "error",
-      `"${name}" was not found. It may already be deleted.`,
-    );
-  }
-  return sendBack(
-    res,
-    back,
-    "error",
-    `"${name}" could not be deleted. Please try again.`,
-  );
+  if (result === "deleted") return sendBack(res, back, "success", `✓ "${name}" and its survey responses were deleted.`);
+  if (result === "missing") return sendBack(res, back, "error", `"${name}" was not found. It may already be deleted.`);
+  return sendBack(res, back, "error", `"${name}" could not be deleted. Please try again.`);
 };
