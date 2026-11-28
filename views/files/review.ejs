@@ -25,9 +25,12 @@
 <div class="page">
   <div class="page-head">
     <div>
-      <div class="steps" aria-label="Import steps"><span class="done"><b>✓</b> Upload</span><span class="now"><b>2</b> Review</span><span><b>3</b> Import</span></div>
+      <div class="row" style="justify-content:space-between">
+        <div class="steps" aria-label="Import steps"><span class="done"><b>✓</b> Upload</span><span class="now"><b>2</b> Review</span><span><b>3</b> Import</span></div>
+        <% if (batch) { %><span class="badge badge-review">File <%= batch.index %> of <%= batch.total %> in this upload</span><% } %>
+      </div>
       <h1 style="margin-top:12px"><%= file.name %></h1>
-      <p><% if (file.type_detection && file.type_detection.source === 'unknown') { %><span class="badge badge-review">Pre or post?</span><% } else { %><span class="badge badge-<%= file.type %>"><%= file.type === 'pre' ? 'Pre-Survey' : 'Post-Survey' %></span><% } %>
+      <p><% if (file.type_detection && file.type_detection.source === 'unknown') { %><span class="badge badge-review">Survey type?</span><% } else { %><span class="badge badge-<%= file.type %>"><%= { pre: 'Pre-Survey', post: 'Post-Survey', general: 'General survey' }[file.type] %></span><% } %>
         <% if (file.is_replacement) { %> · New version: approving replaces the previous version's responses.<% } %>
         <% if (result.sheetName) { %> · Sheet "<%= result.sheetName %>"<% } %> · Headers found on row <%= result.headerRow %></p>
     </div>
@@ -48,10 +51,10 @@
   <section class="card" style="border-left:6px solid <%= unknownType ? 'var(--yellow)' : 'var(--teal)' %>">
     <div class="row" style="justify-content:space-between">
       <div>
-        <h2><% if (unknownType) { %>Is this a pre- or post-survey?<% } else if (fromColumn) { %>Pre and post are marked on each row<% } else { %>This is a <%= file.type === 'pre' ? 'pre' : 'post' %>-survey<% } %></h2>
+        <h2><% if (unknownType) { %>Is this a pre-, post- or general survey?<% } else if (fromColumn) { %>The survey type is marked on each row<% } else { %>This is <%= { pre: 'a pre-survey', post: 'a post-survey', general: 'a general survey' }[file.type] %><% } %></h2>
         <p class="small muted" style="margin-top:4px">
           <% if (unknownType) { %>Nothing in the file says. Choose one before importing.
-          <% } else if (fromColumn) { %>The file has a Pre/Post column, so each row is sorted on its own (<%= result.rows.filter((r) => r.survey_type === 'pre').length %> pre, <%= result.rows.filter((r) => r.survey_type === 'post').length %> post).
+          <% } else if (fromColumn) { %>The file has a survey type column, so each row is sorted on its own (<%= result.rows.filter((r) => r.survey_type === 'pre').length %> pre, <%= result.rows.filter((r) => r.survey_type === 'post').length %> post, <%= result.rows.filter((r) => r.survey_type === 'general').length %> general).
           <% } else { %>Detected from the <strong><%= detection.source %></strong>. <%= detection.detail %><% } %>
         </p>
       </div>
@@ -61,6 +64,7 @@
             <% if (unknownType) { %><option value="">Choose…</option><% } %>
             <option value="pre" <%= !unknownType && file.type === 'pre' ? 'selected' : '' %>>Pre-survey (before the program)</option>
             <option value="post" <%= !unknownType && file.type === 'post' ? 'selected' : '' %>>Post-survey (after the program)</option>
+            <option value="general" <%= !unknownType && file.type === 'general' ? 'selected' : '' %>>General survey (one-off, not before/after)</option>
           </select>
         </label>
       <% } %>
@@ -186,7 +190,10 @@
         </table>
       </div>
       <div class="sticky-bar">
-        <button class="btn btn-ghost" type="submit" formaction="/files/review/<%= file.id %>/cancel" formnovalidate>Cancel upload</button>
+        <div class="row">
+          <button class="btn btn-ghost" type="submit" formaction="/files/review/<%= file.id %>/cancel" formnovalidate>Cancel this file</button>
+          <% if (batch && batch.next) { %><a class="btn btn-ghost" href="/files/review/<%= batch.next %>">Skip for now →</a><% } %>
+        </div>
         <div class="row">
           <button class="btn btn-ghost" type="submit">Re-check with my changes</button>
           <button class="btn btn-accent" type="submit" formaction="/files/review/<%= file.id %>/approve">Approve &amp; import <%= result.rows.length %> rows</button>

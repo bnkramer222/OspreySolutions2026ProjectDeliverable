@@ -19,6 +19,8 @@
     <a href="/files" <%- current === 'all' ? 'aria-current="page"' : '' %>>All files</a>
     <a href="/files/pre" <%- current === 'pre' ? 'aria-current="page"' : '' %>>Pre-Survey</a>
     <a href="/files/post" <%- current === 'post' ? 'aria-current="page"' : '' %>>Post-Survey</a>
+    <a href="/files/general" <%- current === 'general' ? 'aria-current="page"' : '' %>>General</a>
+    <a href="/files/status" <%- current === 'status' ? 'aria-current="page"' : '' %>>Pre/post status</a>
   </nav>
 
   <% if (success) { %><div class="alert alert-ok" role="status"><%= success %></div><% } %>
@@ -38,13 +40,14 @@
       <input type="hidden" name="returnTo" value="<%= basePath %>">
       <div class="form-grid">
         <fieldset class="field span-2" style="border:0;padding:0;margin:0">
-          <legend style="padding:0;margin-bottom:6px">Pre or post survey?</legend>
+          <legend style="padding:0;margin-bottom:6px">Survey type</legend>
           <div class="row">
             <label class="check"><input type="radio" name="survey" value="auto" checked> Detect automatically</label>
             <label class="check"><input type="radio" name="survey" value="pre"> Pre</label>
             <label class="check"><input type="radio" name="survey" value="post"> Post</label>
+            <label class="check"><input type="radio" name="survey" value="general"> General</label>
           </div>
-          <span class="hint">Reads the file name, sheet name, title and columns. If it can't tell, you choose on the next page.</span>
+          <span class="hint">Pre/post = before and after a program. General = a one-off survey (event feedback, a check-in). If it can't tell, you choose on the next page.</span>
         </fieldset>
         <label class="field">Program *
           <select name="program" required>
@@ -70,8 +73,9 @@
             <% years.forEach((y) => { %><option><%= y %></option><% }) %>
           </select>
         </label>
-        <label class="field span-2">Survey file (CSV or Excel .xlsx, up to 4 MB) *
-          <input type="file" name="surveyFile" accept=".csv,.xlsx" required>
+        <label class="field span-2">Survey files (CSV or Excel .xlsx) *
+          <input type="file" name="surveyFile" accept=".csv,.xlsx" multiple required>
+          <span class="hint">Choose one or several (up to 20, 4 MB in total). They share the tags above, and you review each one.</span>
         </label>
         <button class="btn" type="submit">Upload &amp; check</button>
       </div>
@@ -99,6 +103,15 @@
                     <% if (f.waiting) { %><span class="badge badge-review">Needs review</span>
                     <% } else if (f.status === 'imported') { %><span class="badge badge-ok"><%= f.rowCount %> responses</span>
                     <% } else { %><span class="badge badge-warn">Not imported</span><% } %>
+                    <% if (type === 'pre') { %>
+                      <form method="POST" action="/files/expects-post/<%= f.id %>" style="margin-top:6px">
+                        <input type="hidden" name="returnTo" value="<%= basePath %>">
+                        <label class="check tiny" title="Untick if these students won't take a post-survey">
+                          <input type="checkbox" name="expectsPost" value="1" <%= f.expectsPost ? 'checked' : '' %> onchange="this.form.submit()"> Post-survey planned
+                        </label>
+                        <noscript><button class="link-btn tiny">Save</button></noscript>
+                      </form>
+                    <% } %>
                   </td>
                   <td><%= f.program || '—' %></td>
                   <td><%= f.school || '—' %><% if (f.siteType) { %><div class="tiny muted"><%= f.siteType %></div><% } %></td>

@@ -14,13 +14,13 @@ const fileModel = require("../models/fileModel");
 
 // ---- Upload settings (multer) ----
 const upload = multer({
-  // Keep the upload in memory (req.file.buffer) instead of saving it to disk.
+  // Keep uploads in memory (req.files[i].buffer) instead of saving them to disk.
   // The controller then stores it in the database (Vercel can't save files to disk).
   storage: multer.memoryStorage(),
 
   // Vercel rejects requests bigger than about 4.5 MB, so stop at 4 MB
-  // with a clear error instead.
-  limits: { fileSize: 4 * 1024 * 1024 },
+  // with a clear error instead. Up to 20 files per upload (story #45).
+  limits: { fileSize: 4 * 1024 * 1024, files: 20 },
 
   // WHICH files to accept. Runs BEFORE the file is read.
   // cb(null, true) = accept, cb(null, false) = reject.
@@ -37,10 +37,6 @@ const upload = multer({
     const { program, school, year, site_type: siteType } = req.body;
     let problem = null;
     if (!okType) problem = "Unknown section.";
-    else if (!okExt)
-      problem = /\.xls$/i.test(file.originalname)
-        ? `"${file.originalname}" is an old Excel file. In Excel, choose File → Save As → Excel Workbook (.xlsx) and upload that.`
-        : `"${file.originalname}" is not a CSV or Excel (.xlsx) file.`;
     else if (!fileModel.PROGRAMS.includes(program))
       problem = "Please choose a program.";
     else if (!school || !school.trim())
@@ -51,16 +47,30 @@ const upload = multer({
       problem = "Please choose a valid academic year.";
 
     req.uploadError = problem; // the controller shows this message if set
-    cb(null, !problem);
+    if (problem) return cb(null, false);
+    // A wrong file type only skips that file; the others still upload
+    if (!okExt) {
+      (req.skipped = req.skipped || []).push(
+        /\.xls$/i.test(file.originalname)
+          ? `"${file.originalname}" is an old Excel file (save it as .xlsx)`
+          : `"${file.originalname}" isn't a CSV or Excel (.xlsx) file`,
+      );
+      return cb(null, false);
+    }
+    cb(null, true);
   },
 });
 
 // Runs multer, and turns a "file too large" error into a normal
 // message for the controller instead of crashing the request.
 const receiveFile = (req, res, next) =>
-  upload.single("surveyFile")(req, res, (err) => {
+  upload.array("surveyFile", 20)(req, res, (err) => {
     if (err && err.code === "LIMIT_FILE_SIZE") {
-      req.uploadError = "That file is too large (4 MB max).";
+      req.uploadError = "A file is too large (4 MB max per upload).";
+      return next();
+    }
+    if (err && (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE")) {
+      req.uploadError = "Too many files at once (20 max).";
       return next();
     }
     next(err);
@@ -86,13 +96,21 @@ router.post("/review/:id(\\d+)/approve", readForm, controller.saveReview);
 router.post("/review/:id(\\d+)/cancel", readForm, controller.cancelReview);
 router.post("/import/:id(\\d+)", readForm, controller.importStored);
 
+// Pre/post status: who still needs a post-survey
+// GET  /files/status              -> the status page
+// GET  /files/status/missing.csv  -> student IDs missing a post-survey
+// POST /files/expects-post/12     -> "Post-survey planned" tick box on a pre file
+router.get("/status", controller.status);
+router.get("/status/missing.csv", controller.missingCsv);
+router.post("/expects-post/:id(\\d+)", readForm, controller.setExpectsPost);
+
 // GET /files/pre or /files/post -> show just that section
-router.get("/:type(pre|post)", controller.section);
+router.get("/:type(pre|post|general)", controller.section);
 
 // POST /files/pre/upload or /files/post/upload -> check tags, save file, save tags
-// receiveFile runs FIRST and reads the file into memory (req.file.buffer).
+// receiveFile runs FIRST and reads the files into memory (req.files).
 // 'surveyFile' must match name="surveyFile" on the file input in the view.
-router.post("/:type(pre|post)/upload", receiveFile, controller.upload);
+router.post("/:type(pre|post|general)/upload", receiveFile, controller.upload);
 
 // POST /files/upload -> same, but works out pre or post from the file itself
 router.post("/upload", receiveFile, controller.upload);
