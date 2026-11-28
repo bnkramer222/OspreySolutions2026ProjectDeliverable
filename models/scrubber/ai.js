@@ -18,12 +18,12 @@ const db = require("../../db/database");
 
 const BASE = "https://api.groq.com/openai/v1";
 const URL = `${BASE}/chat/completions`;
-const MODEL = (process.env.GROQ_MODEL || "").trim() || "llama-3.3-70b-versatile";
+const MODEL = (process.env.GROQ_MODEL || "").trim() || "openai/gpt-oss-120b";
 
 // Models to try, best first. If the key can't use one (Groq answers 404),
 // the app asks Groq which models this key CAN use and switches to the
 // best one available. The choice is remembered until the server restarts.
-const PREFERRED = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+const PREFERRED = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
 let activeModel = MODEL;
 
 async function pickAvailableModel() {
