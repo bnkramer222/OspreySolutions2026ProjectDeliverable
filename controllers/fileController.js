@@ -15,7 +15,7 @@ const surveyModel = require("../models/surveyModel");
 const F = require("../models/scrubber/fields");
 
 // Heading text for each section. Add a line here to add a new section.
-const LABELS = { pre: "Pre-Survey", post: "Post-Survey" };
+const LABELS = { pre: "Pre-Survey", post: "Post-Survey", general: "General survey" };
 
 const buildSection = async (type) => ({
   type,
@@ -56,53 +56,77 @@ exports.index = async (req, res, next) => {
 exports.section = exports.index;
 
 // POST /files/pre/upload  or  POST /files/post/upload
-// multer (routes file) has ALREADY checked the tags and read the file
-// into memory (req.file.buffer). Here we save it, run the scrubber,
-// and send the admin to the review page.
+// multer (routes file) has ALREADY checked the tags and read the files
+// into memory (req.files[i].buffer). Here we save each one, run the
+// scrubber, and send the admin to review them one after another.
 exports.upload = async (req, res, next) => {
-  const back = ["/files", "/files/pre", "/files/post"].includes(req.body.returnTo) ? req.body.returnTo : "/files";
+  const back = ["/files", "/files/pre", "/files/post", "/files/general"].includes(req.body.returnTo) ? req.body.returnTo : "/files";
+  const files = req.files || [];
+  const skipped = req.skipped || [];
 
   if (req.uploadError) return sendBack(res, back, "error", req.uploadError);
-  if (!req.file) return sendBack(res, back, "error", "Please choose a CSV or Excel file to upload.");
+  if (!files.length)
+    return sendBack(res, back, "error", skipped.length ? `Nothing uploaded: ${skipped.join("; ")}.` : "Please choose a CSV or Excel file to upload.");
 
-  // Pre or post: chosen on the form, or worked out from the file
-  // (file name, sheet name, title row, a Pre/Post column, then AI).
-  const name = path.basename(req.file.originalname);
+  // Every file gets the same tags. Each one is checked, scrubbed and
+  // parked for review; then the admin reviews them one after another.
   const chosen = req.params.type || (fileModel.TYPES.includes(req.body.survey) ? req.body.survey : null);
-  let type = chosen;
-  let detection = { source: "chosen", detail: "Chosen when uploading." };
-  if (!chosen) {
+  const tags = { program: req.body.program, school: req.body.school.trim(), cohort: (req.body.cohort || "").trim(), year: req.body.year, site_type: req.body.site_type };
+  const queue = [];
+  const failed = [...skipped];
+  for (const f of files) {
+    const name = path.basename(f.originalname);
     try {
-      detection = await surveyModel.detectSurveyType(req.file.buffer, name);
+      // Pre, post or general: chosen on the form, or worked out from the file
+      // (survey type column, file name, sheet name, title row, then AI).
+      let type = chosen;
+      let detection = { source: "chosen", detail: "Chosen when uploading." };
+      if (!chosen) {
+        detection = await surveyModel.detectSurveyType(f.buffer, name);
+        type = detection.type || "pre"; // unknown: the admin chooses on the review page
+      }
+      const id = await fileModel.save(type, name, f.buffer, tags, req.session.user.id, detection);
+      try {
+        await surveyModel.prepare(id);
+        queue.push(id);
+      } catch (err) {
+        await surveyModel.discard(id).catch(() => {});
+        failed.push(`"${name}" couldn't be read: ${err.message}`);
+      }
     } catch (err) {
-      return sendBack(res, back, "error", `"${name}" couldn't be read: ${err.message}`);
+      failed.push(`"${name}" couldn't be read: ${err.message}`);
     }
-    type = detection.type || "pre"; // unknown: parked under Pre until the admin chooses on the review page
   }
 
-  let id;
-  try {
-    id = await fileModel.save(
-      type,
-      name,
-      req.file.buffer,
-      { program: req.body.program, school: req.body.school.trim(), cohort: (req.body.cohort || "").trim(), year: req.body.year, site_type: req.body.site_type },
-      req.session.user.id,
-      detection,
-    );
-  } catch (err) {
-    return next(err);
-  }
-
-  try {
-    await surveyModel.prepare(id);
-  } catch (err) {
-    // The file couldn't be read at all (empty, wrong format...): undo the upload
-    await surveyModel.discard(id).catch(() => {});
-    return sendBack(res, back, "error", `"${req.file.originalname}" couldn't be read: ${err.message}`);
-  }
-  res.redirect(`/files/review/${id}`);
+  if (!queue.length) return sendBack(res, back, "error", failed.join(" "));
+  req.session.reviewQueue = queue;
+  await saveSession(req);
+  const note = queue.length > 1 ? `${queue.length} files uploaded. Review each one, then approve it.` : "";
+  const problems = failed.length ? ` Not uploaded: ${failed.join("; ")}.` : "";
+  const params = new URLSearchParams();
+  if (note || problems) params.set(problems ? "error" : "success", (note + problems).trim());
+  res.redirect(`/files/review/${queue[0]}${params.toString() ? "?" + params : ""}`);
 };
+
+// After approving or cancelling: the next file from the same upload that
+// still needs review, or null when the batch is done.
+async function nextInQueue(req, doneId) {
+  const queue = (req.session.reviewQueue || []).filter((id) => id !== doneId);
+  let next = null;
+  for (const id of queue) {
+    const f = await surveyModel.getStaged(id);
+    if (f && f.staging) {
+      next = id;
+      break;
+    }
+  }
+  req.session.reviewQueue = next ? queue : [];
+  await saveSession(req);
+  return next;
+}
+
+// Saves the session before redirecting, so the next page sees the queue
+const saveSession = (req) => new Promise((resolve) => req.session.save(() => resolve()));
 
 // POST /files/import/:id -> scrub a file that was uploaded before the scrubber existed
 exports.importStored = async (req, res, next) => {
@@ -122,7 +146,10 @@ exports.review = async (req, res, next) => {
     if (!file) return res.status(404).send("File not found");
     if (!file.staging) return sendBack(res, `/files/${file.type}`, "success", `"${file.name}" has no changes waiting for review.`);
     const { result, overrides } = file.staging;
+    const queue = req.session.reviewQueue || [];
+    const position = queue.indexOf(file.id);
     res.render("files/review", {
+      batch: position >= 0 && queue.length > 1 ? { index: position + 1, total: queue.length, next: queue[position + 1] || null } : null,
       detection: file.type_detection || { source: "chosen", detail: "" },
       title: `Review ${file.name}`,
       file,
@@ -174,7 +201,10 @@ exports.saveReview = async (req, res, next) => {
     if (!approving) return sendBack(res, `/files/review/${id}`, "success", "Updated. Check the preview below.");
     const count = await surveyModel.approve(id, req.session.user.id);
     const finalType = picked || file.type;
-    sendBack(res, `/files/${finalType}`, "success", `✓ "${file.name}" imported: ${count} ${count === 1 ? "response" : "responses"} added to ${LABELS[finalType]} data.`);
+    const message = `✓ "${file.name}" imported: ${count} ${count === 1 ? "response" : "responses"} added to ${LABELS[finalType]} data.`;
+    const next = await nextInQueue(req, id);
+    if (next) return sendBack(res, `/files/review/${next}`, "success", `${message} Next file:`);
+    sendBack(res, `/files/${finalType}`, "success", message);
   } catch (err) {
     if (/couldn't|can't|isn't|No survey answers|empty|already has|Choose whether/.test(err.message)) return sendBack(res, `/files/review/${id}`, "error", err.message);
     next(err);
@@ -187,7 +217,10 @@ exports.cancelReview = async (req, res, next) => {
     const file = await surveyModel.getStaged(Number(req.params.id));
     if (!file) return res.redirect("/files");
     await surveyModel.discard(file.id);
-    sendBack(res, `/files/${file.type}`, "success", file.status === "new" ? `Upload of "${file.name}" cancelled. Nothing was saved.` : `The new version of "${file.name}" was discarded. The previous version is unchanged.`);
+    const message = file.status === "new" ? `Upload of "${file.name}" cancelled. Nothing was saved.` : `The new version of "${file.name}" was discarded. The previous version is unchanged.`;
+    const next = await nextInQueue(req, file.id);
+    if (next) return sendBack(res, `/files/review/${next}`, "success", `${message} Next file:`);
+    sendBack(res, `/files/${file.type}`, "success", message);
   } catch (err) {
     next(err);
   }
@@ -229,4 +262,47 @@ exports.remove = async (req, res, next) => {
   if (result === "deleted") return sendBack(res, back, "success", `✓ "${name}" and its survey responses were deleted.`);
   if (result === "missing") return sendBack(res, back, "error", `"${name}" was not found. It may already be deleted.`);
   return sendBack(res, back, "error", `"${name}" could not be deleted. Please try again.`);
+};
+
+// GET /files/status -> which groups still need post-surveys
+exports.status = async (req, res, next) => {
+  try {
+    const groups = await surveyModel.completion();
+    res.render("files/status", {
+      title: "Pre/post status",
+      groups,
+      current: "status",
+      success: req.query.success || null,
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /files/status/missing.csv?school=..&program=..&cohort=.. -> student IDs with a pre but no post
+exports.missingCsv = async (req, res, next) => {
+  try {
+    const want = (v) => String(v || "");
+    const group = (await surveyModel.completion()).find(
+      (g) => want(g.school) === want(req.query.school) && want(g.program) === want(req.query.program) && want(g.cohort) === want(req.query.cohort),
+    );
+    if (!group) return res.status(404).send("Group not found");
+    const lines = ["Student ID,School / site,Program,Cohort", ...group.preOnly.map((id) => [id, group.school, group.program, group.cohort].map((v) => `"${String(v || "").replace(/"/g, '""')}"`).join(","))];
+    const name = `missing_post_${[group.school, group.cohort].filter(Boolean).join("_")}`.replace(/[^a-z0-9]+/gi, "_");
+    res.attachment(`${name}.csv`).type("text/csv").send("\ufeff" + lines.join("\r\n"));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /files/expects-post/12 -> tick/untick "Post-survey planned" on a pre file
+exports.setExpectsPost = async (req, res, next) => {
+  try {
+    await fileModel.setExpectsPost(Number(req.params.id), req.body.expectsPost === "1");
+    const back = ["/files", "/files/pre", "/files/status"].includes(req.body.returnTo) ? req.body.returnTo : "/files/pre";
+    res.redirect(back);
+  } catch (err) {
+    next(err);
+  }
 };
