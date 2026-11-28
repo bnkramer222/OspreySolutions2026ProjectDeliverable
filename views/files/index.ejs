@@ -1,160 +1,115 @@
 <%#
-  VIEW - File Management (Brandon)
-  Matches the "Uploaded files" and "Delete file" wireframe screens.
-  EJS = HTML with JavaScript mixed in. Tag types used below:
-    "<" + "% code"     runs JavaScript (loops, if statements), prints nothing
-    "<" + "%= value"   prints a value into the page (safely escaped)
-    "<" + "%- include" inserts another file (the shared header/footer)
-    "<" + "%# note"    a comment like this one, never shown in the page
-  Data from fileController:
-    title, basePath, sections = [{ type, label, files }],
-    programs, years (dropdown choices), success, error (banner messages)
+  VIEW - Survey files (Brandon)
+  Upload a pre- or post-survey file, see every file and its import status.
+  Data from fileController: title, basePath, current ('all'|'pre'|'post'),
+  sections = [{ type, label, files }], programs, years, labels, aiUsage,
+  success, error
 %>
 <%- include('../partials/header') %>
-
-<%# Styles for this page only. Every class starts with "fm-" (File Management)
-    so it can't clash with styles from the other pages. %>
-<style>
-  .fm-page { max-width: 1100px; margin: 0 auto; padding: 28px; display: flex; flex-direction: column; gap: 24px;
-             font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1f1f; box-sizing: border-box; }
-  .fm-page h1 { margin: 0; font-size: 28px; }
-  .fm-page h2 { margin: 0; font-size: 20px; }
-  .fm-muted { color: #4a4a4a; font-size: 14px; }
-  .fm-sub { margin: 6px 0 0; color: #4a4a4a; }
-  .fm-box { background: #fff; border: 1.5px solid #9a9a9a; border-radius: 6px; box-sizing: border-box; }
-  .fm-section { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
-  .fm-upload-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; align-items: end;
-                    padding: 16px; background: #fafaf8; border: 1px dashed #9a9a9a; border-radius: 4px; }
-  .fm-wide { grid-column: span 2; }
-  @media (max-width: 420px) { .fm-wide { grid-column: auto; } }
-  .fm-upload-grid input[type="file"] { padding: 9px 10px; }
-  .fm-lbl { font-size: 12px; color: #4a4a4a; text-transform: uppercase; letter-spacing: .06em; }
-  .fm-inp { border: 1.5px solid #9a9a9a; border-radius: 4px; padding: 8px 10px; font: inherit; font-size: 14px;
-            background: #fff; color: #1f1f1f; min-height: 44px; box-sizing: border-box; width: 100%; }
-  .fm-btn, .fm-btnp { display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
-                      border: 1.5px solid #1f1f1f; border-radius: 4px; padding: 0 16px; min-height: 44px;
-                      font: inherit; font-size: 14px; cursor: pointer; box-sizing: border-box; }
-  .fm-btn { background: #fff; color: #1f1f1f; }
-  .fm-btnp { background: #1f1f1f; color: #fff; }
-  .fm-btnp:disabled { opacity: .4; cursor: not-allowed; }
-  .fm-sm { min-height: 36px; font-size: 13px; padding: 0 12px; }
-  .fm-table-wrap { overflow-x: auto; }
-  .fm-table { width: 100%; border-collapse: collapse; }
-  .fm-table th, .fm-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #d6d6d3; font-size: 14px; white-space: nowrap; }
-  .fm-table th { font-size: 12px; color: #4a4a4a; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
-  .fm-actions { display: flex; gap: 6px; justify-content: flex-end; }
-  .fm-empty { margin: 0; padding: 12px; color: #4a4a4a; }
-  .fm-alert { padding: 12px 16px; border-radius: 6px; font-size: 14px; border: 1.5px solid; }
-  .fm-alert-ok { background: #eef6ee; border-color: #2e6b34; color: #1d4a22; }
-  .fm-alert-err { background: #fbeeee; border-color: #8a2a2a; color: #6b1d1d; }
-  .fm-sr { position: absolute; left: -9999px; }
-  /* Delete pop-up (matches the "Delete file" wireframe) */
-  .fm-dialog { width: calc(100% - 32px); max-width: 480px; padding: 28px; border-color: #1f1f1f;
-               font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1f1f; }
-  .fm-dialog .fm-inp, .fm-dialog button { font-family: inherit; }
-  .fm-dialog::backdrop { background: rgba(31, 31, 31, .45); }
-  .fm-dialog form { display: flex; flex-direction: column; gap: 16px; margin: 0; }
-  .fm-dialog h2 { font-size: 22px; }
-  .fm-dialog p { margin: 0; font-size: 14px; }
-  .fm-filecard { padding: 12px; border: 1px solid #d6d6d3; border-radius: 4px; font-size: 14px; }
-  .fm-field { display: flex; flex-direction: column; gap: 4px; }
-  .fm-dialog-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-</style>
-
-<div class="fm-page">
-
-  <%# Page heading %>
-  <div>
-    <h1><%= title %></h1>
-    <p class="fm-sub">Newest first. Deleting a file removes it from all results and reports.</p>
+<div class="page">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">File Management</div>
+      <h1>Survey files</h1>
+      <p>Upload pre- and post-survey results as CSV or Excel. The data scrubber cleans each file and shows you every change before anything is saved.</p>
+    </div>
   </div>
 
-  <%# STORY #18: confirm the delete worked (green), or explain why it didn't (red).
-      role="status"/"alert" makes screen readers read it out. %>
-  <% if (success) { %>
-    <div class="fm-alert fm-alert-ok" role="status"><%= success %></div>
-  <% } %>
-  <% if (error) { %>
-    <div class="fm-alert fm-alert-err" role="alert"><%= error %></div>
-  <% } %>
+  <nav class="tabs" aria-label="Survey sections">
+    <a href="/files" <%- current === 'all' ? 'aria-current="page"' : '' %>>All files</a>
+    <a href="/files/pre" <%- current === 'pre' ? 'aria-current="page"' : '' %>>Pre-Survey</a>
+    <a href="/files/post" <%- current === 'post' ? 'aria-current="page"' : '' %>>Post-Survey</a>
+  </nav>
 
-  <%# One box per section the controller sent (Pre, Post, or just one of them) %>
-  <% sections.forEach(({ type, label, files }) => { %>
-    <section class="fm-box fm-section">
+  <% if (success) { %><div class="alert alert-ok" role="status"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-err" role="alert"><%= error %></div><% } %>
 
-      <h2><%= label %> <span class="fm-muted">(<%= files.length %> <%= files.length === 1 ? 'file' : 'files' %>)</span></h2>
-
-      <%# Upload form with tags (story #41). Sends to /files/pre/upload or /files/post/upload.
-          enctype="multipart/form-data" is REQUIRED for file uploads.
-          The tag fields MUST come before the file input, so the server can
-          check them before saving the file.
-          name="surveyFile" must match upload.single('surveyFile') in the routes. %>
-      <form class="fm-upload-grid" action="/files/<%= type %>/upload" method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="returnTo" value="<%= basePath %>">
-
-        <label class="fm-field"><span class="fm-lbl">Program *</span>
-          <select class="fm-inp" name="program" required>
+  <%# ---- Upload (story #5 + tags from story #41) ----
+      The form's action is set by the Pre/Post choice. The tag fields come
+      BEFORE the file input so the server can check them first. %>
+  <section class="card">
+    <div class="card-head">
+      <div><h2>Upload a survey file</h2><p>Tags fill in anything the file leaves out, like the school or cohort.</p></div>
+      <span class="small muted" title="AI suggestions use Groq's free tier">
+        <% if (aiUsage.enabled) { %>AI suggestions on · <%= aiUsage.requests %> request<%= aiUsage.requests === 1 ? '' : 's' %> today<% } else { %>AI suggestions off (no GROQ_API_KEY). Rules still clean the file.<% } %>
+      </span>
+    </div>
+    <form id="upload-form" class="dropzone" action="/files/<%= current === 'post' ? 'post' : 'pre' %>/upload" method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="returnTo" value="<%= basePath %>">
+      <div class="form-grid">
+        <% if (current === 'all') { %>
+          <fieldset class="field" style="border:0;padding:0;margin:0">
+            <legend style="padding:0;margin-bottom:6px">Survey *</legend>
+            <div class="row">
+              <label class="check"><input type="radio" name="survey" value="pre" checked> Pre</label>
+              <label class="check"><input type="radio" name="survey" value="post"> Post</label>
+            </div>
+          </fieldset>
+        <% } %>
+        <label class="field">Program *
+          <select name="program" required>
             <option value="">Choose…</option>
             <% programs.forEach((p) => { %><option><%= p %></option><% }) %>
           </select>
         </label>
-
-        <label class="fm-field"><span class="fm-lbl">School / university *</span>
-          <input class="fm-inp" type="text" name="school" maxlength="120" placeholder="e.g. Lincoln High School" required>
+        <label class="field">School / university *
+          <input type="text" name="school" maxlength="120" placeholder="e.g. Lincoln High School" required>
         </label>
-
-        <label class="fm-field"><span class="fm-lbl">Cohort</span>
-          <input class="fm-inp" type="text" name="cohort" maxlength="60" placeholder="e.g. Fall 2026">
+        <label class="field">Cohort
+          <input type="text" name="cohort" maxlength="60" placeholder="e.g. Fall 2026">
         </label>
-
-        <label class="fm-field"><span class="fm-lbl">Academic year</span>
-          <select class="fm-inp" name="year">
+        <label class="field">Academic year
+          <select name="year">
             <option value="">—</option>
             <% years.forEach((y) => { %><option><%= y %></option><% }) %>
           </select>
         </label>
-
-        <label class="fm-field fm-wide"><span class="fm-lbl">Survey file (CSV or Excel) *</span>
-          <input class="fm-inp" type="file" name="surveyFile" accept=".csv,.xlsx,.xls" required>
+        <label class="field span-2">Survey file (CSV or Excel .xlsx, up to 4 MB) *
+          <input type="file" name="surveyFile" accept=".csv,.xlsx" required>
         </label>
+        <button class="btn" type="submit">Upload &amp; check</button>
+      </div>
+    </form>
+  </section>
 
-        <button class="fm-btnp" type="submit">+ Import file</button>
-      </form>
-
-      <%# Show a message if nothing is uploaded yet, otherwise show the table %>
+  <% sections.forEach(({ type, label, files }) => { %>
+    <section class="card card-flush">
+      <div class="card-head">
+        <h2><%= label %> <span class="muted small">· <%= files.length %> <%= files.length === 1 ? 'file' : 'files' %></span></h2>
+      </div>
       <% if (files.length === 0) { %>
-        <p class="fm-empty">No <%= label.toLowerCase() %> files uploaded yet.</p>
+        <div class="empty"><strong>No <%= label.toLowerCase() %> files yet</strong>Upload one above to get started.</div>
       <% } else { %>
-        <div class="fm-table-wrap">
-          <table class="fm-table">
-            <thead>
-              <tr><th>File</th><th>Program</th><th>School</th><th>Cohort</th><th>Year</th><th>Size</th><th>Uploaded</th><th><span class="fm-sr">Actions</span></th></tr>
-            </thead>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>File</th><th>Status</th><th>Program</th><th>School</th><th>Cohort</th><th>Year</th><th>Uploaded</th><th><span class="sr-only">Actions</span></th></tr></thead>
             <tbody>
               <% files.forEach((f) => {
                    const fileUrl = '/files/' + type + '/' + encodeURIComponent(f.name);
-                   const sizeText = (f.size / 1024).toFixed(1) + ' KB';
-                   const dateText = f.uploadedAt.toLocaleString(); %>
+                   const sizeText = (f.size / 1024).toFixed(1) + ' KB'; %>
                 <tr>
-                  <td><%= f.name %></td>
-                  <%# Story #41 tags. A dash means "not tagged" (files uploaded before tags existed) %>
+                  <td><strong><%= f.name %></strong><div class="tiny muted"><%= sizeText %></div></td>
+                  <td>
+                    <% if (f.waiting) { %><span class="badge badge-review">Needs review</span>
+                    <% } else if (f.status === 'imported') { %><span class="badge badge-ok"><%= f.rowCount %> responses</span>
+                    <% } else { %><span class="badge badge-warn">Not imported</span><% } %>
+                  </td>
                   <td><%= f.program || '—' %></td>
                   <td><%= f.school || '—' %></td>
                   <td><%= f.cohort || '—' %></td>
                   <td><%= f.year || '—' %></td>
-                  <td><%= sizeText %></td>
-                  <td><%= dateText %></td>
+                  <td class="nowrap small"><%= f.uploadedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></td>
                   <td>
-                    <div class="fm-actions">
-                      <%# View opens the file in a new tab (fileController.view) %>
-                      <a class="fm-btn fm-sm" href="<%= fileUrl %>" target="_blank">View</a>
-
-                      <%# STORY #17: Delete opens the pop-up below. The data-... values
-                          tell the pop-up which file it's about. %>
-                      <button type="button" class="fm-btn fm-sm" data-delete
-                              data-action="<%= fileUrl %>/delete"
-                              data-name="<%= f.name %>"
-                              data-meta="<%= [f.program, f.school, f.cohort, label, sizeText].filter(Boolean).join(' · ') %>">Delete</button>
+                    <div class="table-actions">
+                      <% if (f.waiting) { %>
+                        <a class="btn btn-accent btn-sm" href="/files/review/<%= f.id %>">Review</a>
+                      <% } else if (f.status !== 'imported') { %>
+                        <form method="POST" action="/files/import/<%= f.id %>"><button class="btn btn-accent btn-sm" type="submit">Import rows</button></form>
+                      <% } %>
+                      <a class="btn btn-ghost btn-sm" href="<%= fileUrl %>">Download</a>
+                      <button type="button" class="btn btn-ghost btn-sm" data-delete
+                              data-action="<%= fileUrl %>/delete" data-name="<%= f.name %>"
+                              data-meta="<%= [label, f.school, f.cohort, f.status === 'imported' ? f.rowCount + ' responses' : null].filter(Boolean).join(' · ') %>">Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -167,68 +122,41 @@
   <% }) %>
 </div>
 
-<%# ---- STORY #17: "Delete this file?" pop-up ----
-    One pop-up for the whole page. Clicking a Delete button fills in
-    that file's name and sends the form to that file's delete URL.
-    <dialog> is a built-in HTML pop-up; showModal() dims the page behind it. %>
-<dialog id="fm-delete" class="fm-box fm-dialog" aria-labelledby="fm-del-title">
-  <form id="fm-delete-form" method="POST">
-    <h2 id="fm-del-title">Delete this file?</h2>
-
-    <div class="fm-filecard">
-      <div id="fm-del-name" style="font-weight: 600"></div>
-      <div id="fm-del-meta" class="fm-muted"></div>
-    </div>
-
-    <p>This file will be permanently removed. Dashboard numbers, pre/post results and future reports will no longer use it. This can't be undone.</p>
-
-    <%# The user must type DELETE. The server checks this too. %>
-    <label class="fm-field">
-      <span class="fm-lbl">Type DELETE to confirm</span>
-      <input id="fm-del-input" class="fm-inp" type="text" name="confirmText" placeholder="DELETE" autocomplete="off" required>
-    </label>
-
-    <%# Tells the server which page to send us back to %>
+<%# STORY #17: "Delete this file?" pop-up. The user must type DELETE (the server checks too). %>
+<dialog id="del" class="modal" aria-labelledby="del-title">
+  <form id="del-form" method="POST">
+    <h2 id="del-title">Delete this file?</h2>
+    <div class="card" style="padding:12px;box-shadow:none"><strong id="del-name"></strong><div id="del-meta" class="small muted"></div></div>
+    <p>The file and all of its survey responses will be permanently removed. Dashboard numbers and reports will no longer count them. This can't be undone.</p>
+    <label class="field">Type DELETE to confirm<input id="del-input" type="text" name="confirmText" placeholder="DELETE" autocomplete="off" required></label>
     <input type="hidden" name="returnTo" value="<%= basePath %>">
-
-    <div class="fm-dialog-buttons">
-      <button type="button" class="fm-btn" id="fm-del-cancel">Cancel</button>
-      <button type="submit" class="fm-btnp" id="fm-del-submit" disabled>Delete file</button>
+    <div class="modal-buttons">
+      <button type="button" class="btn btn-ghost" id="del-cancel">Cancel</button>
+      <button type="submit" class="btn btn-danger" id="del-submit" disabled>Delete file</button>
     </div>
   </form>
 </dialog>
 
 <script>
-  // Runs in the browser. Opens/closes the delete pop-up.
   (function () {
-    const dialog = document.getElementById('fm-delete');
-    const form = document.getElementById('fm-delete-form');
-    const input = document.getElementById('fm-del-input');
-    const submit = document.getElementById('fm-del-submit');
-
-    // Clicking any Delete button in the table
+    // Pre/Post choice decides where the upload goes
+    var form = document.getElementById('upload-form');
+    document.querySelectorAll('input[name="survey"]').forEach(function (r) {
+      r.addEventListener('change', function () { form.action = '/files/' + r.value + '/upload'; });
+    });
+    // Delete pop-up
+    var dialog = document.getElementById('del'), delForm = document.getElementById('del-form');
+    var input = document.getElementById('del-input'), submit = document.getElementById('del-submit');
     document.querySelectorAll('[data-delete]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        form.action = btn.dataset.action;                                    // which file to delete
-        document.getElementById('fm-del-name').textContent = btn.dataset.name; // show its name
-        document.getElementById('fm-del-meta').textContent = btn.dataset.meta; // show its details
-        input.value = '';        // clear what was typed last time
-        submit.disabled = true;  // can't delete until DELETE is typed
-        dialog.showModal();
-        input.focus();
+        delForm.action = btn.dataset.action;
+        document.getElementById('del-name').textContent = btn.dataset.name;
+        document.getElementById('del-meta').textContent = btn.dataset.meta;
+        input.value = ''; submit.disabled = true; dialog.showModal(); input.focus();
       });
     });
-
-    // "Delete file" only turns on once the box says DELETE
-    input.addEventListener('input', function () {
-      submit.disabled = input.value.trim() !== 'DELETE';
-    });
-
-    // Cancel closes the pop-up and nothing is deleted
-    document.getElementById('fm-del-cancel').addEventListener('click', function () {
-      dialog.close();
-    });
+    input.addEventListener('input', function () { submit.disabled = input.value.trim() !== 'DELETE'; });
+    document.getElementById('del-cancel').addEventListener('click', function () { dialog.close(); });
   })();
 </script>
-
 <%- include('../partials/footer') %>

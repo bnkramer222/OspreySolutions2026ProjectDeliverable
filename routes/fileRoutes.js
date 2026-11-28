@@ -28,7 +28,7 @@ const upload = multer({
   // already has them here.
   fileFilter: (req, file, cb) => {
     const okType = fileModel.TYPES.includes(req.params.type);
-    const okExt = [".csv", ".xlsx", ".xls"].includes(
+    const okExt = [".csv", ".xlsx"].includes(
       path.extname(file.originalname).toLowerCase(),
     );
 
@@ -37,7 +37,9 @@ const upload = multer({
     let problem = null;
     if (!okType) problem = "Unknown section.";
     else if (!okExt)
-      problem = `"${file.originalname}" is not a CSV or Excel file.`;
+      problem = /\.xls$/i.test(file.originalname)
+        ? `"${file.originalname}" is an old Excel file. In Excel, choose File → Save As → Excel Workbook (.xlsx) and upload that.`
+        : `"${file.originalname}" is not a CSV or Excel (.xlsx) file.`;
     else if (!fileModel.PROGRAMS.includes(program))
       problem = "Please choose a program.";
     else if (!school || !school.trim())
@@ -62,20 +64,32 @@ const receiveFile = (req, res, next) =>
   });
 
 // Reads normal form fields (like the "Type DELETE" box) into req.body
-const readForm = express.urlencoded({ extended: false });
+const readForm = express.urlencoded({ extended: false, limit: "1mb" });
 
 // ---- The URLs ----
 
 // GET /files -> show both sections
 router.get("/", controller.index);
 
+// ---- Data scrubber review (must come before "/:type") ----
+// GET  /files/review/12          -> what the scrubber found
+// POST /files/review/12          -> re-check with the admin's column choices
+// POST /files/review/12/approve  -> save the cleaned rows
+// POST /files/review/12/cancel   -> throw the upload away
+// POST /files/import/12          -> scrub a file uploaded before the scrubber
+router.get("/review/:id(\\d+)", controller.review);
+router.post("/review/:id(\\d+)", readForm, controller.saveReview);
+router.post("/review/:id(\\d+)/approve", readForm, controller.saveReview);
+router.post("/review/:id(\\d+)/cancel", readForm, controller.cancelReview);
+router.post("/import/:id(\\d+)", readForm, controller.importStored);
+
 // GET /files/pre or /files/post -> show just that section
-router.get("/:type", controller.section);
+router.get("/:type(pre|post)", controller.section);
 
 // POST /files/pre/upload or /files/post/upload -> check tags, save file, save tags
 // receiveFile runs FIRST and reads the file into memory (req.file.buffer).
 // 'surveyFile' must match name="surveyFile" on the file input in the view.
-router.post("/:type/upload", receiveFile, controller.upload);
+router.post("/:type(pre|post)/upload", receiveFile, controller.upload);
 
 // POST /files/pre/survey.csv/delete -> delete that file, then go back (stories #17, #18)
 // It's POST (not GET) because it changes data.

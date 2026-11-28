@@ -22,6 +22,11 @@ const YEARS = ["2024-25", "2025-26", "2026-27", "2027-28"];
 
 // Turns a database row into the object the view uses
 const toFile = (row) => ({
+  id: row.id,
+  status: row.status,                 // new / stored / imported
+  rowCount: row.row_count || 0,       // survey rows imported from this file
+  waiting: Boolean(row.waiting),      // true = a version is waiting for review
+  importedAt: row.imported_at ? new Date(row.imported_at) : null,
   name: row.name,
   size: row.size,
   uploadedAt: new Date(row.uploaded_at),
@@ -33,7 +38,7 @@ const toFile = (row) => ({
 
 // Every column except "content" (the file itself), so lists stay fast
 const INFO_COLUMNS =
-  "id, type, name, size, program, school, cohort, year, uploaded_at";
+  "id, type, name, size, program, school, cohort, year, uploaded_at, status, row_count, imported_at, (staging IS NOT NULL) AS waiting";
 
 module.exports = {
   TYPES,
@@ -62,34 +67,48 @@ module.exports = {
     return row && { ...toFile(row), content: row.content };
   },
 
-  // STORY #41: saves a just-uploaded file, its details and its tags.
-  // "content" is the file itself (req.file.buffer from multer).
-  // If a file with the same name is already in this section, it is
-  // replaced (story #19).
-  async save(type, name, content, tags) {
-    await db.run(
-      `INSERT INTO files (type, name, size, content, program, school, cohort, year, uploaded_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  // STORY #41: saves a just-uploaded file, its details and its tags,
+  // and returns its id. Nothing is counted in reports yet: the data
+  // scrubber cleans it first and an admin approves it (surveyModel).
+  // Same name in the same section = a new version (story #19). The new
+  // version waits in pending_content, so the old one keeps working
+  // until the new one is approved.
+  async save(type, name, content, tags, userId) {
+    const cleanTags = {
+      program: tags.program || null,
+      school: tags.school || null,
+      cohort: tags.cohort || null,
+      year: tags.year || null,
+    };
+    const existing = await db.get("SELECT id, status FROM files WHERE type = $1 AND name = $2", [type, name]);
+    if (existing && existing.status !== "new") {
+      await db.run(
+        `UPDATE files SET pending_content = $2, pending_tags = $3, size = $4, uploaded_at = $5, uploaded_by = $6 WHERE id = $1`,
+        [existing.id, content, JSON.stringify(cleanTags), content.length, new Date().toISOString(), userId || null],
+      );
+      return existing.id;
+    }
+    const row = await db.get(
+      `INSERT INTO files (type, name, size, content, program, school, cohort, year, uploaded_at, status, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10)
        ON CONFLICT (type, name) DO UPDATE SET
          size = EXCLUDED.size, content = EXCLUDED.content,
          program = EXCLUDED.program, school = EXCLUDED.school,
          cohort = EXCLUDED.cohort, year = EXCLUDED.year,
-         uploaded_at = EXCLUDED.uploaded_at`,
-      [
-        type,
-        name,
-        content.length,
-        content,
-        tags.program || null,
-        tags.school || null,
-        tags.cohort || null,
-        tags.year || null,
-        new Date().toISOString(),
-      ],
+         uploaded_at = EXCLUDED.uploaded_at, uploaded_by = EXCLUDED.uploaded_by
+       RETURNING id`,
+      [type, name, content.length, content, cleanTags.program, cleanTags.school, cleanTags.cohort, cleanTags.year, new Date().toISOString(), userId || null],
     );
+    return row.id;
+  },
+
+  async getById(id) {
+    return db.get(`SELECT ${INFO_COLUMNS} FROM files WHERE id = $1`, [id]).then((r) => r && toFile(r));
   },
 
   // STORY #17 + #18: delete one file, e.g. await remove('pre', 'survey.csv').
+  // Its survey rows are deleted with it (ON DELETE CASCADE), so reports
+  // stop counting it right away.
   // Returns:
   //   'deleted'  -> the file is gone, and we checked (#18)
   //   'missing'  -> there was no file with that name to delete

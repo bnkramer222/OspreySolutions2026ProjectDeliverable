@@ -1,0 +1,171 @@
+<%#
+  VIEW - Data scrubber review (Brandon)
+  Shows what the scrubber did to one file BEFORE anything is saved:
+  what each column became, every value it changed, problems it found,
+  and a preview. The admin can change a column's meaning or undo an
+  AI suggestion, then approve.
+  Data from fileController.review: file, label, result (scrubber output),
+  rejected (Set of change ids), fieldChoices, error, success
+%>
+<%- include('../partials/header') %>
+<%
+  const sourceBadge = { rule: ['rule', 'Rule'], saved: ['saved', 'Saved fix'], ai: ['ai', 'AI suggestion'], admin: ['admin', 'Your choice'], auto: ['rule', 'New question'], empty: ['rule', 'Empty'] };
+  const r = result.removed;
+  const removedTotal = r.titleRows + r.blankRows + r.repeatedHeaders + r.summaryRows + r.noteRows + r.duplicateRows;
+  const questionCols = result.questions;
+  const preview = result.rows.slice(0, 8);
+  const errors = result.issues.filter((i) => i.severity === 'error').length;
+  const groups = {};
+  fieldChoices.forEach((f) => (groups[f.group] = groups[f.group] || []).push(f));
+  const fmtDate = (d) => d || '—';
+%>
+<div class="page">
+  <div class="page-head">
+    <div>
+      <div class="steps" aria-label="Import steps"><span class="done"><b>✓</b> Upload</span><span class="now"><b>2</b> Review</span><span><b>3</b> Import</span></div>
+      <h1 style="margin-top:12px"><%= file.name %></h1>
+      <p><span class="badge badge-<%= file.type %>"><%= label %></span>
+        <% if (file.is_replacement) { %> · New version: approving replaces the previous version's responses.<% } %>
+        <% if (result.sheetName) { %> · Sheet "<%= result.sheetName %>"<% } %> · Headers found on row <%= result.headerRow %></p>
+    </div>
+  </div>
+
+  <% if (success) { %><div class="alert alert-ok" role="status"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-err" role="alert"><%= error %></div><% } %>
+  <% if (result.ai.status === 'limit' || result.ai.status === 'error') { %>
+    <div class="alert alert-warn"><%= result.ai.message %> The rules still cleaned the file; check any columns marked "New question".</div>
+  <% } else if (result.ai.used) { %>
+    <div class="alert alert-info">The AI helped with <%= result.ai.requests %> question<%= result.ai.requests === 1 ? '' : 's' %> (column names or spellings). Its suggestions are marked <span class="badge badge-ai">AI suggestion</span>. Untick any you don't agree with.</div>
+  <% } %>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-label">Rows read</div><div class="kpi-value"><%= result.stats.rowsRead %></div><div class="kpi-note">after the header row</div></div>
+    <div class="kpi"><div class="kpi-label">Ready to import</div><div class="kpi-value"><%= result.stats.rowsReady %></div><div class="kpi-note"><%= result.stats.withId %> with a student ID</div></div>
+    <div class="kpi"><div class="kpi-label">Values cleaned</div><div class="kpi-value"><%= result.changes.reduce((n, c) => n + c.count, 0) %></div><div class="kpi-note"><%= result.changes.length %> kinds of fixes</div></div>
+    <div class="kpi"><div class="kpi-label">Problems</div><div class="kpi-value"><%= result.issueCount %></div><div class="kpi-note"><%= errors %> rows skipped · <%= removedTotal %> junk rows removed</div></div>
+  </div>
+
+  <form method="POST" action="/files/review/<%= file.id %>" class="stack" style="gap:24px">
+
+    <%# ---- Columns ---- %>
+    <section class="card card-flush">
+      <div class="card-head"><div><h2>Columns</h2><p>What each column in the file was read as. Change any that look wrong, then press "Re-check".</p></div></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Column in file</th><th>Sample values</th><th>Read as</th><th>Why</th></tr></thead>
+          <tbody>
+            <% result.columns.forEach((c) => { const s = sourceBadge[c.source] || ['rule', c.source]; %>
+              <tr>
+                <td><strong><%= c.header %></strong><% if (c.note) { %><div class="tiny muted"><%= c.note %></div><% } %></td>
+                <td><div class="chip-list"><% if (c.field === 'pii') { %><span class="chip">hidden</span><% } else { c.samples.slice(0, 3).forEach((v) => { %><span class="chip"><%= String(v).slice(0, 24) %></span><% }) } %></div></td>
+                <td style="min-width:230px">
+                  <select class="select" name="col_<%= c.index %>" aria-label="What is the column <%= c.header %>?">
+                    <% if (c.field && c.field.startsWith('q_')) { %><option value="<%= c.field %>" selected>New question: <%= c.label %> (<%= c.kind %>)</option><% } %>
+                    <% Object.entries(groups).forEach(([group, list]) => { %>
+                      <optgroup label="<%= group %>">
+                        <% list.forEach((f) => { %><option value="<%= f.key %>" <%= c.field === f.key ? 'selected' : '' %>><%= f.label %></option><% }) %>
+                      </optgroup>
+                    <% }) %>
+                    <optgroup label="Other">
+                      <% if (!(c.field && c.field.startsWith('q_'))) { %><option value="new">New question</option><% } %>
+                      <option value="ignore" <%= c.field === 'ignore' ? 'selected' : '' %>>Don't import</option>
+                      <option value="pii" <%= c.field === 'pii' ? 'selected' : '' %>>Personal info: never stored</option>
+                    </optgroup>
+                  </select>
+                </td>
+                <td><span class="badge badge-<%= s[0] %>"><%= s[1] %></span></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <% if (r.piiColumns.length) { %><p class="note" style="padding:12px 20px">🔒 Removed personal information: <%= r.piiColumns.join(', ') %>. These columns are never saved and were never sent to the AI.</p><% } %>
+    </section>
+
+    <%# ---- Value fixes ---- %>
+    <section class="card card-flush">
+      <div class="card-head"><div><h2>Fixes</h2><p>Messy values the scrubber standardized. Rule fixes are always applied; AI and saved fixes can be unticked.</p></div></div>
+      <% if (!result.changes.length) { %><div class="empty">No values needed fixing.</div><% } else { %>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Field</th><th>Before</th><th></th><th>After</th><th class="num">Rows</th><th>Source</th><th>Keep</th></tr></thead>
+            <tbody>
+              <% result.changes.forEach((c, i) => { const s = sourceBadge[c.source] || ['rule', c.source]; const isRejected = rejected.has(c.id); %>
+                <tr <%- i >= 25 ? 'class="more-row" hidden' : '' %>>
+                  <td class="small"><%= c.field %></td>
+                  <td><span class="change-from"><%= c.from %></span></td>
+                  <td class="arrow">→</td>
+                  <td><strong><%= isRejected ? c.from : c.to %></strong><% if (isRejected) { %> <span class="tiny muted">(kept as is)</span><% } %></td>
+                  <td class="num"><%= c.count %></td>
+                  <td><span class="badge badge-<%= s[0] %>"><%= s[1] %></span></td>
+                  <td><% if (c.source === 'rule') { %><span class="tiny muted">always</span><% } else { %><input type="checkbox" name="keep_<%= c.id %>" value="1" <%= isRejected ? '' : 'checked' %> aria-label="Keep this fix" style="width:18px;height:18px;accent-color:var(--teal)"><% } %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+        <% if (result.changes.length > 25) { %><p style="padding:12px 20px"><button type="button" class="link-btn" onclick="document.querySelectorAll('.more-row').forEach(function(r){r.hidden=false});this.remove()">Show all <%= result.changes.length %> fixes</button></p><% } %>
+      <% } %>
+    </section>
+
+    <%# ---- Problems + removed rows ---- %>
+    <div class="grid grid-2">
+      <section class="card card-flush">
+        <div class="card-head"><div><h2>Problems</h2><p>Values it couldn't read are left blank. Duplicate rows are skipped.</p></div></div>
+        <% if (!result.issues.length) { %><div class="empty">No problems found. ✓</div><% } else { %>
+          <div class="table-wrap" style="max-height:340px;overflow:auto">
+            <table class="table">
+              <thead><tr><th>Row</th><th>Field</th><th>Problem</th></tr></thead>
+              <tbody>
+                <% result.issues.forEach((i) => { %>
+                  <tr><td class="nowrap"><%= i.row || '—' %></td><td class="small"><%= i.field %></td>
+                    <td class="small"><span class="badge badge-<%= i.severity === 'error' ? 'err' : 'warn' %>"><%= i.severity === 'error' ? 'Skipped' : 'Warning' %></span> <%= i.problem %></td></tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+          <% if (result.issueCount > result.issues.length) { %><p class="note" style="padding:12px 20px">Showing the first <%= result.issues.length %> of <%= result.issueCount %>.</p><% } %>
+        <% } %>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>Removed automatically</h2><p>Rows that aren't survey answers.</p></div></div>
+        <ul class="stack small" style="padding-left:18px;margin:0">
+          <li><strong><%= r.titleRows %></strong> title rows above the headers</li>
+          <li><strong><%= r.blankRows %></strong> blank rows</li>
+          <li><strong><%= r.repeatedHeaders %></strong> repeated header rows</li>
+          <li><strong><%= r.summaryRows %></strong> total / average rows</li>
+          <li><strong><%= r.noteRows %></strong> note rows</li>
+          <li><strong><%= r.duplicateRows %></strong> duplicate students</li>
+          <li><strong><%= r.emptyColumns %></strong> empty columns<% if (r.ignoredColumns.length) { %>, plus not imported: <%= r.ignoredColumns.join(', ') %><% } %></li>
+        </ul>
+      </section>
+    </div>
+
+    <%# ---- Preview ---- %>
+    <section class="card card-flush">
+      <div class="card-head"><div><h2>Preview</h2><p>The first <%= preview.length %> of <%= result.rows.length %> cleaned rows, as they'll be saved.</p></div></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Row</th><th>Survey</th><th>Student ID</th><th>School</th><th>Program</th><th>Grade</th><th>Cohort</th><th>Date</th>
+            <% questionCols.forEach((q) => { %><th class="num" title="<%= q.label %>"><%= q.label.length > 18 ? q.label.slice(0, 17) + '…' : q.label %></th><% }) %></tr></thead>
+          <tbody>
+            <% preview.forEach((row) => { %>
+              <tr><td class="muted"><%= row.rowNumber %></td><td><span class="badge badge-<%= row.survey_type %>"><%= row.survey_type %></span></td>
+                <td><%= row.participant_id || '—' %></td><td class="nowrap"><%= row.school || '—' %></td><td class="nowrap"><%= row.program || '—' %></td>
+                <td><%= row.grade_level || '—' %></td><td class="nowrap"><%= row.cohort || '—' %></td><td class="nowrap"><%= fmtDate(row.survey_date) %></td>
+                <% questionCols.forEach((q) => { const v = row.answers[q.key]; %><td class="num"><%= v === undefined ? '—' : q.kind === 'score' ? v + '%' : v %></td><% }) %></tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <div class="sticky-bar">
+        <button class="btn btn-ghost" type="submit" formaction="/files/review/<%= file.id %>/cancel" formnovalidate>Cancel upload</button>
+        <div class="row">
+          <button class="btn btn-ghost" type="submit">Re-check with my changes</button>
+          <button class="btn btn-accent" type="submit" formaction="/files/review/<%= file.id %>/approve">Approve &amp; import <%= result.rows.length %> rows</button>
+        </div>
+      </div>
+    </section>
+  </form>
+</div>
+<%- include('../partials/footer') %>
