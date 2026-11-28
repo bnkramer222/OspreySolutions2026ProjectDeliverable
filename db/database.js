@@ -157,14 +157,19 @@ const SCHEMA = `
 `;
 
 // Runs the schema once per server start. Every query below waits for it.
-// A lock stops two Vercel copies from creating the same tables at once.
+// A transaction lock stops two Vercel copies from creating the same tables
+// at once, and is released automatically at COMMIT (safe with Neon's pooler).
 const ready = (async () => {
   const client = await pool.connect();
   try {
-    await client.query("SELECT pg_advisory_lock(472001)");
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(472001)");
     await client.query(SCHEMA);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
   } finally {
-    await client.query("SELECT pg_advisory_unlock(472001)").catch(() => {});
     client.release();
   }
 })();
