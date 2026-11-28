@@ -13,7 +13,7 @@
 const db = require("../db/database"); // shared Postgres connection
 
 // The survey sections we support.
-const TYPES = ["pre", "post"];
+const TYPES = ["pre", "post", "general"];
 
 // STORY #41: choices for the Program and Academic year dropdowns.
 // Add a line here to add a choice; the form updates automatically.
@@ -24,6 +24,7 @@ const SITE_TYPES = require("./scrubber/fields").SITE_TYPES;
 // Turns a database row into the object the view uses
 const toFile = (row) => ({
   id: row.id,
+  expectsPost: row.expects_post !== false, // false = no post-survey planned
   siteType: row.site_type || null,
   status: row.status,                 // new / stored / imported
   rowCount: row.row_count || 0,       // survey rows imported from this file
@@ -40,7 +41,7 @@ const toFile = (row) => ({
 
 // Every column except "content" (the file itself), so lists stay fast
 const INFO_COLUMNS =
-  "id, type, name, size, program, school, cohort, year, uploaded_at, status, row_count, imported_at, (staging IS NOT NULL) AS waiting, site_type";
+  "id, type, name, size, program, school, cohort, year, uploaded_at, status, row_count, imported_at, (staging IS NOT NULL) AS waiting, site_type, expects_post";
 
 module.exports = {
   TYPES,
@@ -106,6 +107,11 @@ module.exports = {
       [type, name, content.length, content, cleanTags.program, cleanTags.school, cleanTags.cohort, cleanTags.year, new Date().toISOString(), userId || null, cleanTags.site_type, detection && JSON.stringify(detection)],
     );
     return row.id;
+  },
+
+  // Pre-survey files only: is a post-survey planned for these students?
+  async setExpectsPost(id, expects) {
+    await db.run("UPDATE files SET expects_post = $2 WHERE id = $1 AND type = 'pre'", [id, Boolean(expects)]);
   },
 
   async getById(id) {

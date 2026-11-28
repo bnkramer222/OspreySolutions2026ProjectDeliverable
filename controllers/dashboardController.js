@@ -25,7 +25,7 @@ exports.schools = async (req, res, next) => {
 // GET /dashboard/data?type=pre&search=lincoln&page=2 - browse survey responses
 exports.data = async (req, res, next) => {
   try {
-    const type = ["pre", "post"].includes(req.query.type) ? req.query.type : "all";
+    const type = ["pre", "post", "general"].includes(req.query.type) ? req.query.type : "all";
     const search = String(req.query.search || "").trim().slice(0, 80);
     const school = String(req.query.school || "");
     const page = Number(req.query.page) || 1;

@@ -44,7 +44,7 @@ const slug = (text) =>
 
 // Columns that describe who/where/when. Checked in this order.
 const INFO_FIELDS = [
-  { key: "survey_type", label: "Pre / Post", match: [/^(pre ?(or|and)? ?post|survey type|timepoint|phase|pre post)$/] },
+  { key: "survey_type", label: "Survey type", match: [/^(pre ?(or|and)? ?post|survey type|timepoint|phase|pre post|survey)$/] },
   { key: "participant_id", label: "Participant ID", match: [/^(student|participant|learner|user|respondent)? ?(id|number|no|num|code)$/, /^(student|participant|learner|respondent)$/, /^id$/, /\bstudent id\b/, /\bparticipant id\b/] },
   { key: "survey_date", label: "Survey date", match: [/\bdate\b/, /timestamp/, /submitted/, /completed at/] },
   { key: "program", label: "Program", match: [/^program( name)?$/, /^workshop$/, /^course$/] },
@@ -208,7 +208,8 @@ function surveyType(raw) {
   const v = text(raw).toLowerCase();
   if (/^pre|before|baseline|start/.test(v)) return { value: "pre" };
   if (/^post|after|end|final|exit/.test(v)) return { value: "post" };
-  return { problem: `"${text(raw)}" isn't Pre or Post` };
+  if (/general|feedback|evaluation|satisfaction|check ?in|one ?time|event|other/.test(v)) return { value: "general" };
+  return { problem: `"${text(raw)}" isn't Pre, Post or General` };
 }
 
 function program(raw) {
@@ -278,14 +279,16 @@ function detectKind(values) {
   return null; // free text: not stored as a question
 }
 
-// Pre or post, from words like "pre-survey", "baseline", "post test", "exit"
-// in a file name, sheet name or title row. Returns 'pre', 'post' or null.
+// Pre, post or general, from words like "pre-survey", "baseline",
+// "post test", "exit", "feedback", "event evaluation" in a file name,
+// sheet name or title row. Returns 'pre', 'post', 'general' or null.
 function surveyTypeFromText(textValue) {
   const v = ` ${String(textValue || "").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
   const pre = /\s(pre|pretest|presurvey|preassessment|before|baseline|intake|start|beginning)\s/.test(v);
   const post = /\s(post|posttest|postsurvey|postassessment|after|exit|end|final|followup|follow up|completion)\s/.test(v);
   if (pre && !post) return "pre";
   if (post && !pre) return "post";
+  if (!pre && !post && /\s(general|feedback|evaluation|satisfaction|check in|checkin|event|poll|interest|needs assessment)\s/.test(v)) return "general";
   return null;
 }
 

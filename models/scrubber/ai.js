@@ -151,18 +151,19 @@ async function suggestValues(field, values, known) {
   return { ok: true, data: fixes };
 }
 
-// Is this file a pre-survey or a post-survey? Only used when the file
+// Is this file a pre-survey, a post-survey or a general survey? Only used when the file
 // name, sheet name and title rows don't say. Sent: file name, sheet
 // name, title rows and column headers (no student answers).
 // -> "pre" | "post" | null
 async function suggestSurveyType(info) {
   const system =
-    "A youth financial-literacy nonprofit gives students a survey before a program (pre) and after it (post). " +
-    'Decide which one this spreadsheet is from its file name, sheet name, title rows and column headers. Reply with JSON: {"type": "pre" | "post" | "unknown", "reason": "<short reason>"}. ' +
-    'Answer "unknown" unless there is a real clue (for example a question like "What did you learn?" or "How has the program helped you?" suggests post).';
+    "A youth financial-literacy nonprofit gives students a survey before a program (pre), after it (post), " +
+    "and sometimes a one-off general survey that isn't part of a before/after pair (event feedback, a check-in, an interest poll). " +
+    'Decide which one this spreadsheet is from its file name, sheet name, title rows and column headers. Reply with JSON: {"type": "pre" | "post" | "general" | "unknown", "reason": "<short reason>"}. ' +
+    'Answer "unknown" unless there is a real clue (for example "What did you learn?" suggests post; "Rate today\'s event" suggests general).';
   const result = await askJson(system, JSON.stringify(info));
   if (!result.ok) return result;
-  const type = ["pre", "post"].includes(result.data.type) ? result.data.type : null;
+  const type = ["pre", "post", "general"].includes(result.data.type) ? result.data.type : null;
   return { ok: true, data: { type, reason: String(result.data.reason || "").slice(0, 160) } };
 }
 

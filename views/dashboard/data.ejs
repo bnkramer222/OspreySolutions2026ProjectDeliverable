@@ -6,7 +6,7 @@
     <div><div class="eyebrow"><a href="/dashboard">Dashboard</a></div><h1>Survey responses</h1><p><%= total.toLocaleString('en-US') %> responses<%= school ? ' from ' + school : '' %>. Student names are never stored, only IDs.</p></div>
   </div>
   <form method="GET" class="card form-grid">
-    <label class="field">Survey<select name="type"><option value="all">Pre and post</option><option value="pre" <%= type === 'pre' ? 'selected' : '' %>>Pre-survey</option><option value="post" <%= type === 'post' ? 'selected' : '' %>>Post-survey</option></select></label>
+    <label class="field">Survey<select name="type"><option value="all">All surveys</option><option value="pre" <%= type === 'pre' ? 'selected' : '' %>>Pre-survey</option><option value="post" <%= type === 'post' ? 'selected' : '' %>>Post-survey</option><option value="general" <%= type === 'general' ? 'selected' : '' %>>General survey</option></select></label>
     <label class="field span-2">Search<input type="search" name="search" value="<%= search %>" placeholder="Student ID, school, program or cohort"></label>
     <% if (school) { %><input type="hidden" name="school" value="<%= school %>"><% } %>
     <div class="row"><button class="btn" type="submit">Search</button><a class="btn btn-ghost" href="/dashboard/data">Clear</a></div>
@@ -16,7 +16,7 @@
       <div class="table-wrap"><table class="table">
         <thead><tr><th>Survey</th><th>Student ID</th><th>School</th><th>Program</th><th>Grade</th><th>Cohort</th><th>Date</th><th>File</th></tr></thead>
         <tbody><% rows.forEach((r) => { %>
-          <tr><td><span class="badge badge-<%= r.survey_type %>"><%= r.survey_type === 'pre' ? 'Pre' : 'Post' %></span></td><td><%= r.participant_id || '—' %></td><td><%= r.school || '—' %></td><td><%= r.program || '—' %></td>
+          <tr><td><span class="badge badge-<%= r.survey_type %>"><%= { pre: 'Pre', post: 'Post', general: 'General' }[r.survey_type] %></span></td><td><%= r.participant_id || '—' %></td><td><%= r.school || '—' %></td><td><%= r.program || '—' %></td>
             <td><%= r.grade_level || '—' %></td><td><%= r.cohort || '—' %></td><td class="nowrap"><%= r.survey_date ? new Date(r.survey_date).toISOString().slice(0, 10) : '—' %></td><td class="small muted"><%= r.file_name %></td></tr>
         <% }) %></tbody>
       </table></div>

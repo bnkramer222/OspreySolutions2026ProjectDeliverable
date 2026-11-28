@@ -1,0 +1,62 @@
+<%#
+  VIEW - Pre/post status (Brandon)
+  For every site + program + cohort with pre-surveys: how many students
+  also took the post-survey, and who's still missing one. Groups marked
+  "no post-survey planned" (pre-survey only) aren't counted as missing.
+  Data from fileController.status: groups, success, error
+%>
+<%- include('../partials/header') %>
+<%
+  const label = {
+    complete: ['ok', 'Complete'], missing: ['warn', 'Some missing'], waiting: ['review', 'Waiting for post-surveys'],
+    'no-post': ['rule', 'No post-survey planned'], 'post-only': ['warn', 'Post only'],
+  };
+  const totals = groups.filter((g) => g.status !== 'no-post').reduce((t, g) => ({ pre: t.pre + g.pre, matched: t.matched + g.matched, missing: t.missing + g.preOnly.length }), { pre: 0, matched: 0, missing: 0 });
+  const csv = (g) => '/files/status/missing.csv?' + new URLSearchParams({ school: g.school || '', program: g.program || '', cohort: g.cohort || '' }).toString();
+%>
+<div class="page">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">File Management</div>
+      <h1>Survey files</h1>
+      <p>Which students took the pre-survey but not the post-survey yet, for each site and cohort.</p>
+    </div>
+  </div>
+
+  <nav class="tabs" aria-label="Survey sections">
+    <a href="/files">All files</a><a href="/files/pre">Pre-Survey</a><a href="/files/post">Post-Survey</a><a href="/files/general">General</a>
+    <a href="/files/status" aria-current="page">Pre/post status</a>
+  </nav>
+  <% if (success) { %><div class="alert alert-ok" role="status"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-err" role="alert"><%= error %></div><% } %>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-label">Pre-survey students</div><div class="kpi-value"><%= totals.pre %></div><div class="kpi-note">where a post-survey is planned</div></div>
+    <div class="kpi"><div class="kpi-label">Took both</div><div class="kpi-value"><%= totals.matched %></div><div class="kpi-note"><%= totals.pre ? Math.round(totals.matched / totals.pre * 100) + '% complete' : '—' %></div></div>
+    <div class="kpi"><div class="kpi-label">Still missing a post-survey</div><div class="kpi-value"><%= totals.missing %></div><div class="kpi-note">download the IDs below to follow up</div></div>
+  </div>
+
+  <section class="card card-flush">
+    <div class="card-head"><div><h2>By site and cohort</h2><p>Untick "Post-survey planned" on a pre-survey file when those students won't get a post-survey. Their answers still count in reports.</p></div></div>
+    <% if (!groups.length) { %><div class="empty"><strong>No pre- or post-surveys imported yet</strong>Import files on the Survey files page.</div><% } else { %>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>School / site</th><th>Program</th><th>Cohort</th><th class="num">Pre</th><th class="num">Post</th><th class="num">Both</th><th class="num">Missing post</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <% groups.forEach((g) => { const b = label[g.status]; %>
+            <tr>
+              <td><strong><%= g.school || 'Not tagged' %></strong></td><td><%= g.program || '—' %></td><td><%= g.cohort || '—' %></td>
+              <td class="num"><%= g.pre %></td><td class="num"><%= g.post %></td><td class="num"><%= g.matched %></td>
+              <td class="num"><%= g.status === 'no-post' ? '—' : g.preOnly.length %></td>
+              <td><span class="badge badge-<%= b[0] %>"><%= b[1] %></span>
+                <% if (g.postOnly) { %><div class="tiny muted"><%= g.postOnly %> post-only (no matching pre)</div><% } %>
+                <% if (g.noId) { %><div class="tiny muted"><%= g.noId %> without a student ID</div><% } %></td>
+              <td><div class="table-actions"><% if (g.preOnly.length && g.status !== 'no-post') { %><a class="btn btn-ghost btn-sm" href="<%= csv(g) %>">Download IDs</a><% } %></div></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </section>
+  <p class="note">Students are matched by student ID within the same program and cohort. A student whose ID was typed differently on the two surveys shows as missing; fix the ID in the file and upload it again.</p>
+</div>
+<%- include('../partials/footer') %>

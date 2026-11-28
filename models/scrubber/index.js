@@ -342,7 +342,7 @@ async function scrub(buffer, fileName, options = {}) {
   };
 }
 
-// ---------- Pre or post? ----------
+// ---------- Pre, post or general? ----------
 // Looks for clues in this order, stopping at the first one:
 //   1. a Pre/Post column (each row says which it is)
 //   2. the file name ("lincoln_PRE_fall.xlsx")
@@ -355,7 +355,7 @@ async function detectSurveyType(buffer, fileName, ai = null) {
   const headerIndex = findHeaderRow(grid);
   const headers = (grid[headerIndex] || []).map(str).filter(Boolean);
   if (headers.some((h) => (F.matchHeader(h) || {}).field === "survey_type"))
-    return { type: null, source: "column", detail: "Each row has its own Pre/Post column." };
+    return { type: null, source: "column", detail: "Each row has its own survey type column." };
   const fromName = F.surveyTypeFromText(fileName.replace(/\.[a-z]+$/i, ""));
   if (fromName) return { type: fromName, source: "file name", detail: `The file name "${fileName}" says ${fromName}.` };
   const fromSheet = F.surveyTypeFromText(sheetName);
@@ -368,7 +368,7 @@ async function detectSurveyType(buffer, fileName, ai = null) {
     if (result.ok && result.data.type)
       return { type: result.data.type, source: "AI", detail: result.data.reason || "Suggested by AI from the column headers." };
   }
-  return { type: null, source: "unknown", detail: "Nothing in the file says whether it's a pre- or post-survey." };
+  return { type: null, source: "unknown", detail: "Nothing in the file says whether it's a pre-, post- or general survey." };
 }
 
 module.exports = scrub;
