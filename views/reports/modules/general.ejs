@@ -1,0 +1,13 @@
+<% if (!s.responses) { %><p class="muted">No general surveys match these filters.</p><% } else { %>
+  <p class="small muted" style="margin-bottom:12px"><%= s.responses %> responses from <%= s.students %> students at <%= s.sites %> site<%= s.sites === 1 ? '' : 's' %>. These aren't compared before/after.</p>
+  <% if (s.scales.length) { %>
+    <h3 style="margin-bottom:8px">Average rating (1–5)</h3>
+    <%- include('../partials/bars', { series: [{ name: '', color: 'var(--post)' }], max: 5, ticks: [0, 1, 2, 3, 4, 5], tickText: (t) => t, ariaLabel: 'Average ratings on general surveys',
+          items: s.scales.map((i) => ({ label: i.q.label, values: [i.value], text: [fmt.num(i.value) + ' (' + i.n + ')'] })) }) %>
+  <% } %>
+  <% if (s.percents.length) { %>
+    <h3 style="margin:16px 0 8px">Yes answers and scores</h3>
+    <%- include('../partials/bars', { series: [{ name: '', color: 'var(--post)' }], max: 100, ticks: [0, 25, 50, 75, 100], tickText: (t) => t + '%', ariaLabel: 'Percent yes and scores on general surveys',
+          items: s.percents.map((i) => ({ label: i.q.label, values: [i.value], text: [fmt.pct(i.value) + (i.q.kind === 'yesno' ? ' yes' : '') + ' (' + i.n + ')'] })) }) %>
+  <% } %>
+<% } %>

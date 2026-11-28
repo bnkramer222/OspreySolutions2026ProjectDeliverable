@@ -1,0 +1,41 @@
+<%#
+  VIEW - Question manager (Joshua)
+  Rename how each survey question appears in reports, group it under a
+  topic, or hide it from reports. Answers are never changed.
+  Data from reportController.questions: questions, success
+%>
+<%- include('../partials/header') %>
+<% const kindText = { scale: 'Rating 1–5', yesno: 'Yes / No', score: 'Score (%)', number: 'Number' }; %>
+<div class="page">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow"><a href="/reports">Reports</a></div>
+      <h1>Questions</h1>
+      <p>Every question found in imported surveys. Rename one to change how it appears in reports, like "q_how_comfy_r_u" → "Comfort with money decisions". Renaming never changes the answers.</p>
+    </div>
+  </div>
+  <% if (success) { %><div class="alert alert-ok" role="status"><%= success %></div><% } %>
+  <form class="card card-flush" method="POST" action="/reports/questions">
+    <% if (!questions.length) { %><div class="empty"><strong>No questions yet</strong>Import a survey file first.</div><% } else { %>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Name in reports</th><th>Topic</th><th>Type</th><th class="num">Responses</th><th>Hide from reports</th></tr></thead>
+        <tbody>
+          <% questions.forEach((q, i) => { %>
+            <tr <%- q.hidden ? 'style="opacity:.6"' : '' %>>
+              <td style="min-width:260px"><input type="hidden" name="key" value="<%= q.key %>">
+                <input class="input" type="text" name="label_<%= i %>" value="<%= q.label %>" maxlength="80" required aria-label="Name for <%= q.key %>">
+                <div class="tiny muted" style="margin-top:4px">Saved as <code><%= q.key %></code></div></td>
+              <td style="min-width:150px"><input class="input" type="text" name="topic_<%= i %>" value="<%= q.topic || '' %>" maxlength="40" placeholder="e.g. Saving" list="topics" aria-label="Topic for <%= q.label %>"></td>
+              <td class="small nowrap"><%= kindText[q.kind] || q.kind %></td>
+              <td class="num"><%= q.answered %></td>
+              <td><label class="check"><input type="checkbox" name="hidden_<%= i %>" value="1" <%= q.hidden ? 'checked' : '' %>> Hide</label></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+      <datalist id="topics"><% ['Budgeting', 'Saving', 'Banking', 'Credit', 'Investing', 'Knowledge', 'Feedback'].forEach((t) => { %><option value="<%= t %>"><% }) %></datalist>
+      <div class="sticky-bar"><span class="small muted">Hidden questions stay in the database and come back if you untick them.</span><button class="btn" type="submit">Save changes</button></div>
+    <% } %>
+  </form>
+</div>
+<%- include('../partials/footer') %>

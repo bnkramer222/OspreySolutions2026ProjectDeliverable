@@ -4,8 +4,9 @@
 // Everything is in the URL, so a report can be bookmarked or shared
 // with another staff member and opens the same way.
 const reports = require("../models/reports");
+const surveyModel = require("../models/surveyModel");
 
-const FILTER_KEYS = ["program", "siteType", "school", "cohort", "year", "grade", "from", "to"];
+const FILTER_KEYS = ["program", "siteType", "school", "cohort", "year", "grade", "from", "to", "surveys"];
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 // Turns the query string into a clean report request
@@ -17,6 +18,7 @@ function readRequest(query) {
   const filters = {};
   for (const k of FILTER_KEYS) {
     const v = typeof query[k] === "string" ? query[k].trim() : "";
+    if (k === "surveys") { if (["prepost", "general"].includes(v)) filters[k] = v; continue; }
     if (v && ((k !== "from" && k !== "to") || isDate(v))) filters[k] = v;
   }
   const minGroup = [1, 5, 10].includes(Number(query.minGroup)) ? Number(query.minGroup) : 5;
@@ -32,6 +34,8 @@ function readRequest(query) {
 const filterText = (filters) => {
   const parts = reports.FILTERS.filter((f) => filters[f.key]).map((f) => (f.key === "grade" ? `Grade ${filters[f.key]}` : filters[f.key]));
   if (filters.from || filters.to) parts.push(`Surveys ${filters.from || "…"} to ${filters.to || "…"}`);
+  if (filters.surveys === "prepost") parts.push("Pre/post surveys only");
+  if (filters.surveys === "general") parts.push("General surveys only");
   return parts.length ? parts.join(" · ") : "All programs, schools and cohorts";
 };
 
@@ -68,6 +72,35 @@ exports.exportCsv = async (req, res, next) => {
     const csv = reports.toCsv(report, { title: request.title, filterText: filterText(request.filters) });
     const name = request.title.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "report";
     res.attachment(`${name}.csv`).type("text/csv").send(csv);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /reports/questions -> rename questions, set topics, hide from reports
+exports.questions = async (req, res, next) => {
+  try {
+    res.render("reports/questions", {
+      title: "Questions",
+      questions: await surveyModel.questions(),
+      success: req.query.success || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /reports/questions -> save every row of the form
+exports.saveQuestions = async (req, res, next) => {
+  try {
+    const keys = [].concat(req.body.key || []);
+    for (let i = 0; i < keys.length; i++)
+      await surveyModel.updateQuestion(keys[i], {
+        label: req.body[`label_${i}`],
+        topic: req.body[`topic_${i}`],
+        hidden: req.body[`hidden_${i}`] === "1",
+      });
+    res.redirect("/reports/questions?success=" + encodeURIComponent("Saved. Reports now use these names."));
   } catch (err) {
     next(err);
   }

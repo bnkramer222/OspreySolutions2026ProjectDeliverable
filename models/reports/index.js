@@ -14,6 +14,7 @@ const MODULES = [
   require("./modules/knowledge"),
   require("./modules/behavior"),
   require("./modules/growth"),
+  require("./modules/general"),
   ...require("./modules/breakdown"),
 ];
 const byId = Object.fromEntries(MODULES.map((m) => [m.id, m]));
@@ -22,7 +23,7 @@ const byId = Object.fromEntries(MODULES.map((m) => [m.id, m]));
 const TEMPLATES = [
   { id: "grant", title: "Grant application", description: "Reach, outcomes and key findings.", modules: ["overview", "highlights", "knowledge", "behavior", "growth"] },
   { id: "sponsor", title: "Sponsor update", description: "Short summary with results by school.", modules: ["overview", "highlights", "by_school"] },
-  { id: "impact", title: "Full impact report", description: "Every section.", modules: MODULES.map((m) => m.id) },
+  { id: "impact", title: "Full impact report", description: "Every section, including general surveys.", modules: MODULES.map((m) => m.id) },
   { id: "custom", title: "Custom", description: "Pick your own sections.", modules: null },
 ];
 
@@ -37,7 +38,7 @@ async function build(filters, moduleIds, options) {
       const m = byId[id];
       return { id, title: m.title, description: m.description, view: id.startsWith("by_") ? "breakdown" : id, ...m.compute(d, options) };
     });
-  return { sections, counts: { pre: d.pre.length, post: d.post.length, pairs: d.pairs.length } };
+  return { sections, counts: { pre: d.pre.length, post: d.post.length, general: d.general.length, pairs: d.pairs.length } };
 }
 
 // The report's sections as one CSV file (for Excel)

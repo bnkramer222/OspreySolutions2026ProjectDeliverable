@@ -15,8 +15,8 @@ module.exports = {
     const b = behavior.compute(data, opts);
     const g = growth.compute(data, opts);
     const lines = [];
-    const reached = students([...data.pre, ...data.post]);
-    const schools = new Set([...data.pre, ...data.post].map((r) => r.school).filter(Boolean)).size;
+    const reached = students([...data.pre, ...data.post, ...data.general]);
+    const schools = new Set([...data.pre, ...data.post, ...data.general].map((r) => r.school).filter(Boolean)).size;
     if (reached) lines.push(`${fmt.int(reached)} students across ${schools} school${schools === 1 ? "" : "s"} and site${schools === 1 ? "" : "s"} took part, and ${fmt.int(data.pairs.length)} completed both the pre- and post-survey.`);
     // Only headline results that rest on enough students
     const enough = (i) => i.n >= Math.max(opts.minGroup, 10);
