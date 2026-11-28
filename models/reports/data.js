@@ -2,6 +2,8 @@
 // REPORTS - loads and summarizes survey data (Joshua)
 // Every report module gets the same "data" object from load():
 //   data.pre, data.post   -> response rows matching the filters
+//   data.general          -> one-off (general) survey rows; never part of
+//                            before/after comparisons
 //   data.pairs            -> students who took BOTH surveys
 //                            { id, school, program, ..., pre: answers, post: answers }
 //   data.questions        -> question catalog (key, label, kind, max_value, topic)
@@ -44,19 +46,23 @@ async function load(filters = {}) {
   }
   if (filters.from) where.push(`survey_date >= $${params.push(filters.from)}`);
   if (filters.to) where.push(`survey_date <= $${params.push(filters.to)}`);
+  if (filters.surveys === "prepost") where.push("survey_type IN ('pre', 'post')");
+  if (filters.surveys === "general") where.push("survey_type = 'general'");
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const [rows, questions] = await Promise.all([
     db.all(
-      `SELECT id, survey_type, participant_id, program, school, site_type, location, grade_level, cohort, year, survey_date, answers
-       FROM survey_responses ${clause} ORDER BY id`,
+      `SELECT id, survey_type, participant_id, program, school, site_type, location, grade_level, cohort, year, survey_date, answers, expects_post
+       FROM all_responses ${clause} ORDER BY id`,
       params,
     ),
-    db.all("SELECT key, label, kind, max_value::float AS max_value, topic FROM survey_questions ORDER BY created_at, key"),
+    // Hidden questions (Question manager) are left out of every report
+    db.all("SELECT key, label, kind, max_value::float AS max_value, topic FROM survey_questions WHERE NOT hidden ORDER BY created_at, key"),
   ]);
 
   const pre = rows.filter((r) => r.survey_type === "pre");
   const post = rows.filter((r) => r.survey_type === "post");
+  const general = rows.filter((r) => r.survey_type === "general");
 
   // Match students: same ID, program and cohort (latest response wins)
   const key = (r) => [r.participant_id, r.program || "", r.cohort || ""].join("|");
@@ -67,12 +73,12 @@ async function load(filters = {}) {
   const pairs = [];
   for (const [k, p] of preBy) {
     const q = postBy.get(k);
-    if (q) pairs.push({ id: p.participant_id, school: p.school, site_type: p.site_type, program: p.program, cohort: p.cohort, year: p.year, grade_level: p.grade_level, pre: p.answers, post: q.answers });
+    if (q) pairs.push({ expectsPost: p.expects_post !== false, id: p.participant_id, school: p.school, site_type: p.site_type, program: p.program, cohort: p.cohort, year: p.year, grade_level: p.grade_level, pre: p.answers, post: q.answers });
   }
 
   // Only questions that appear in the filtered data
   const present = new Set(rows.flatMap((r) => Object.keys(r.answers)));
-  return { pre, post, pairs, questions: questions.filter((q) => present.has(q.key)), filters };
+  return { pre, post, general, pairs, questions: questions.filter((q) => present.has(q.key)), filters };
 }
 
 // ---------- helpers for modules ----------

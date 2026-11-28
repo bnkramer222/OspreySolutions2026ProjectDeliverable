@@ -5,7 +5,8 @@
 </div>
 <% if (s.byProgram.length > 1) { %>
   <div class="table-wrap" style="margin-top:16px"><table class="table">
-    <thead><tr><th>Program</th><th class="num">Pre-survey students</th><th class="num">Post-survey students</th><th class="num">Schools</th></tr></thead>
-    <tbody><% s.byProgram.forEach((p) => { %><tr><td><%= p.program %></td><td class="num"><%= p.pre %></td><td class="num"><%= p.post %></td><td class="num"><%= p.schools %></td></tr><% }) %></tbody>
+    <% const hasGeneral = s.byProgram.some((p) => p.general); %>
+    <thead><tr><th>Program</th><th class="num">Pre-survey students</th><th class="num">Post-survey students</th><% if (hasGeneral) { %><th class="num">General-survey students</th><% } %><th class="num">Schools / sites</th></tr></thead>
+    <tbody><% s.byProgram.forEach((p) => { %><tr><td><%= p.program %></td><td class="num"><%= p.pre %></td><td class="num"><%= p.post %></td><% if (hasGeneral) { %><td class="num"><%= p.general %></td><% } %><td class="num"><%= p.schools %></td></tr><% }) %></tbody>
   </table></div>
 <% } %>

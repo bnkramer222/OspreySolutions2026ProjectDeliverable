@@ -15,6 +15,7 @@
       <p>Combined results across every imported survey. Pick a ready-made report or build your own, then print, save as PDF, or download the numbers.</p>
     </div>
     <div class="page-actions">
+      <a class="btn btn-ghost" href="/reports/questions">Manage questions</a>
       <a class="btn btn-ghost" href="<%= exportUrl %>">Download CSV</a>
       <button class="btn btn-accent" type="button" onclick="window.print()">Print / Save PDF</button>
     </div>
@@ -54,6 +55,13 @@
               </select>
             </label>
           <% }) %>
+          <label class="field">Surveys included
+            <select name="surveys" data-auto>
+              <option value="">All (pre, post and general)</option>
+              <option value="prepost" <%= request.filters.surveys === 'prepost' ? 'selected' : '' %>>Pre/post only</option>
+              <option value="general" <%= request.filters.surveys === 'general' ? 'selected' : '' %>>General surveys only</option>
+            </select>
+          </label>
           <div class="form-grid" style="grid-template-columns:1fr 1fr">
             <label class="field">Surveys from<input type="date" name="from" value="<%= request.filters.from || '' %>" data-auto></label>
             <label class="field">to<input type="date" name="to" value="<%= request.filters.to || '' %>" data-auto></label>
@@ -87,9 +95,9 @@
         </div>
         <img src="/images/ptat-logo-white.png" alt="Planned to A.T." onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://irp.cdn-website.com/77a9c324/dms3rep/multi/opt/WhiteLogo-211w.png'}else{this.remove()}">
       </header>
-      <div class="report-filters"><strong>Data:</strong> <%= filterText %> · <%= report.counts.pre %> pre-survey and <%= report.counts.post %> post-survey responses</div>
+      <div class="report-filters"><strong>Data:</strong> <%= filterText %> · <%= report.counts.pre %> pre-survey, <%= report.counts.post %> post-survey<%= report.counts.general ? ' and ' + report.counts.general + ' general' : '' %> responses</div>
       <div class="report-body">
-        <% if (!report.counts.pre && !report.counts.post) { %>
+        <% if (!report.counts.pre && !report.counts.post && !report.counts.general) { %>
           <div class="empty" style="padding:48px 0"><strong>No survey data matches these filters</strong>
             <% if (Object.keys(request.filters).length) { %>Try clearing a filter.<% } else { %>Import a pre- and post-survey file on the <a href="/files">Survey files</a> page first.<% } %></div>
         <% } else { report.sections.forEach((s) => { %>
