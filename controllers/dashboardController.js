@@ -1,61 +1,37 @@
 // CONTROLLER - Dashboard (Jude)
-const dashboardModel = require('../models/dashboardModel');
+const dashboardModel = require("../models/dashboardModel");
+const { fmt } = require("../models/reports");
 
-// Display the main dashboard.
-exports.index = (req, res) => {
-  res.render('dashboard/index', {
-    title: 'Dashboard',
-    data: dashboardModel.getAll()
-  });
+// GET /dashboard - headline numbers, quick results, recent imports
+exports.index = async (req, res, next) => {
+  try {
+    res.render("dashboard/index", { title: "Dashboard", ...(await dashboardModel.summary()), fmt });
+  } catch (err) {
+    next(err);
+  }
 };
 
-// Display schools and filter by state.
-exports.schools = (req, res) => {
-  const selectedState = req.query.state || '';
-
-  let schools = dashboardModel.getSchools();
-
-  if (selectedState) {
-    schools = schools.filter(
-      school => school.state === selectedState
-    );
+// GET /dashboard/schools?state=GA - schools and their survey counts
+exports.schools = async (req, res, next) => {
+  try {
+    const selectedState = req.query.state || "";
+    const { states, schools } = await dashboardModel.getSchools(selectedState);
+    res.render("dashboard/schools", { title: "Schools", schools, states, selectedState });
+  } catch (err) {
+    next(err);
   }
-
-  res.render('dashboard/schools', {
-    title: 'States and Schools',
-    schools,
-    selectedState
-  });
 };
 
-// Display survey records and apply filters.
-exports.data = (req, res) => {
-  const type = req.query.type || 'All';
-  const search = req.query.search || '';
-
-  let records = dashboardModel.getRecords();
-
-  if (type !== 'All') {
-    records = records.filter(
-      record => record.type === type
-    );
+// GET /dashboard/data?type=pre&search=lincoln&page=2 - browse survey responses
+exports.data = async (req, res, next) => {
+  try {
+    const type = ["pre", "post"].includes(req.query.type) ? req.query.type : "all";
+    const search = String(req.query.search || "").trim().slice(0, 80);
+    const school = String(req.query.school || "");
+    const page = Number(req.query.page) || 1;
+    const result = await dashboardModel.getRecords({ type, search, school, page });
+    res.render("dashboard/data", { title: "Survey data", ...result, type, search, school });
+  } catch (err) {
+    next(err);
   }
-
-  if (search) {
-    const searchText = search.toLowerCase();
-
-    records = records.filter(record =>
-      record.school.toLowerCase().includes(searchText) ||
-      record.id.toLowerCase().includes(searchText) ||
-      record.program.toLowerCase().includes(searchText)
-    );
-  }
-
-  res.render('dashboard/data', {
-    title: 'Survey Data',
-    records,
-    type,
-    search,
-    totalRecords: dashboardModel.getRecords().length
-  });
 };

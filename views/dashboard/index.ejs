@@ -1,43 +1,61 @@
-
+<%# VIEW - Dashboard (Jude): live numbers from the survey database %>
 <%- include('../partials/header') %>
-
-<main class="dashboard">
-  <h1>PTAT Dashboard</h1>
-
-
-  <div class="dashboard-tabs">
-  <a href="/dashboard/data" class="dashboard-tab">
-    <h2>Survey Data</h2>
-    <p>View and filter survey records.</p>
-  </a>
-
-  <a href="/dashboard/schools" class="dashboard-tab">
-    <h2>States and Schools</h2>
-    <p>View schools, locations, and survey records.</p>
-  </a>
-
-  <a href="/files/pre" class="dashboard-tab">
-    <h2>Pre-Survey</h2>
-    <p>View and import pre-survey files.</p>
-  </a>
-
-  <a href="/files/post" class="dashboard-tab">
-    <h2>Post-Survey</h2>
-    <p>View and import post-survey files.</p>
-  </a>
-
-
-  <a href="/reports" class="dashboard-tab">
-    <h2>Reports</h2>
-    <p>Open and utilize the report section.</p>
-  </a>
-
-<a href="/account" class="dashboard-tab">
-  <h2>Account Management</h2>
-  <p>View and manage account settings.</p>
-</a>
-
+<% const o = overview; %>
+<div class="page">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Dashboard</div>
+      <h1>Welcome back, <%= user.firstName || user.name %></h1>
+      <p>Where Planned to A.T.'s survey data stands today.</p>
+    </div>
+    <div class="page-actions">
+      <a class="btn btn-ghost" href="/files">Upload surveys</a>
+      <a class="btn btn-accent" href="/reports">Build a report</a>
+    </div>
   </div>
-</main>
 
+  <% if (o.waiting) { %><div class="alert alert-warn"><strong><%= o.waiting %> file<%= o.waiting === 1 ? ' is' : 's are' %> waiting for review.</strong> They aren't counted until approved. <a href="/files">Review now →</a></div><% } %>
+  <% if (o.not_imported) { %><div class="alert alert-info"><%= o.not_imported %> older file<%= o.not_imported === 1 ? " hasn't" : "s haven't" %> been imported into the database yet. Use <strong>Import rows</strong> on the <a href="/files">Survey files</a> page.</div><% } %>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-label">Students reached</div><div class="kpi-value"><%= fmt.int(o.participants) %></div><div class="kpi-note">unique student IDs</div></div>
+    <div class="kpi"><div class="kpi-label">Completed both surveys</div><div class="kpi-value"><%= fmt.int(o.matched) %></div><div class="kpi-note"><%= o.participants ? fmt.pct(o.matched / o.participants * 100) : '—' %> of students</div></div>
+    <div class="kpi"><div class="kpi-label">Survey responses</div><div class="kpi-value"><%= fmt.int(o.pre_responses + o.post_responses) %></div><div class="kpi-note"><%= fmt.int(o.pre_responses) %> pre · <%= fmt.int(o.post_responses) %> post</div></div>
+    <div class="kpi"><div class="kpi-label">Schools & universities</div><div class="kpi-value"><%= fmt.int(o.schools) %></div><div class="kpi-note"><a href="/dashboard/schools">See all schools →</a></div></div>
+  </div>
+
+  <% if (!o.pre_responses && !o.post_responses) { %>
+    <section class="card empty"><strong>No survey data yet</strong>Upload a pre-survey and a post-survey file to see results here.<div style="margin-top:14px"><a class="btn" href="/files">Upload a file</a></div></section>
+  <% } else { %>
+    <div class="grid grid-2">
+      <section class="card">
+        <div class="card-head"><div><h2>Knowledge & confidence</h2><p>Students who took both surveys</p></div><a class="small" href="/reports?template=grant">Full report →</a></div>
+        <% if (knowledge.scales.length) { %>
+          <%- include('../reports/partials/bars', { series: [{ name: 'Pre-survey', color: 'var(--pre)' }, { name: 'Post-survey', color: 'var(--post)' }], max: 5, ticks: [0,1,2,3,4,5], tickText: (t) => t, ariaLabel: 'Average ratings before and after', width: 600,
+                items: knowledge.scales.map((i) => ({ label: i.q.label, values: [i.pre, i.post], text: [fmt.num(i.pre), fmt.num(i.post)] })) }) %>
+        <% } else { %><p class="muted">No rating questions yet.</p><% } %>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>Financial behaviors</h2><p>% answering yes, students who took both surveys</p></div></div>
+        <% if (behavior.items.length) { %>
+          <%- include('../reports/partials/bars', { series: [{ name: 'Pre-survey', color: 'var(--pre)' }, { name: 'Post-survey', color: 'var(--post)' }], max: 100, ticks: [0,25,50,75,100], tickText: (t) => t + '%', ariaLabel: 'Percent answering yes before and after', width: 600,
+                items: behavior.items.map((i) => ({ label: i.q.label, values: [i.pre, i.post], text: [fmt.pct(i.pre), fmt.pct(i.post)] })) }) %>
+        <% } else { %><p class="muted">No Yes/No questions yet.</p><% } %>
+      </section>
+    </div>
+  <% } %>
+
+  <section class="card card-flush">
+    <div class="card-head"><div><h2>Recent imports</h2></div><a class="small" href="/dashboard/data">Browse all responses →</a></div>
+    <% if (!recent.length) { %><div class="empty">Nothing imported yet.</div><% } else { %>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>File</th><th>Survey</th><th>School</th><th>Program</th><th class="num">Responses</th><th>Imported</th><th>By</th></tr></thead>
+        <tbody><% recent.forEach((f) => { %>
+          <tr><td><%= f.name %></td><td><span class="badge badge-<%= f.type %>"><%= f.type === 'pre' ? 'Pre' : 'Post' %></span></td><td><%= f.school || '—' %></td><td><%= f.program || '—' %></td>
+            <td class="num"><%= f.row_count %></td><td class="nowrap small"><%= f.imported_at ? new Date(f.imported_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—' %></td><td class="small"><%= f.uploaded_by || '—' %></td></tr>
+        <% }) %></tbody>
+      </table></div>
+    <% } %>
+  </section>
+</div>
 <%- include('../partials/footer') %>
