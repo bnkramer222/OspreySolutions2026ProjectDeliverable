@@ -239,7 +239,7 @@ async function scrub(buffer, fileName, options = {}) {
       else record.answers[col.field] = result.value;
     }
     // Upload-form tags fill in anything the file doesn't say
-    for (const key of ["program", "school", "cohort", "year"]) if (!record[key] && tags[key]) record[key] = tags[key];
+    for (const key of ["program", "school", "cohort", "year", "site_type"]) if (!record[key] && tags[key]) record[key] = tags[key];
     if (!record.participant_id && !Object.keys(record.answers).length) return removed.blankRows++;
     rows.push(record);
   });
@@ -287,6 +287,9 @@ async function scrub(buffer, fileName, options = {}) {
       changes.set(id, c);
     }
   }
+
+  // Site type: the file's own column, else the upload form, else guessed from the name
+  for (const r of rows) if (!r.site_type) r.site_type = F.inferSiteType(r.school) || null;
 
   // ---------- 6. Problems ----------
   const seenIds = new Map();
@@ -339,4 +342,34 @@ async function scrub(buffer, fileName, options = {}) {
   };
 }
 
+// ---------- Pre or post? ----------
+// Looks for clues in this order, stopping at the first one:
+//   1. a Pre/Post column (each row says which it is)
+//   2. the file name ("lincoln_PRE_fall.xlsx")
+//   3. the sheet name ("Post Survey Responses")
+//   4. title rows above the headers ("My Money Grows Pre-Survey")
+//   5. the AI (file name, sheet, titles and headers only)
+// Returns { type: 'pre'|'post'|null, source, detail }
+async function detectSurveyType(buffer, fileName, ai = null) {
+  const { sheetName, grid } = await readTable(buffer, fileName);
+  const headerIndex = findHeaderRow(grid);
+  const headers = (grid[headerIndex] || []).map(str).filter(Boolean);
+  if (headers.some((h) => (F.matchHeader(h) || {}).field === "survey_type"))
+    return { type: null, source: "column", detail: "Each row has its own Pre/Post column." };
+  const fromName = F.surveyTypeFromText(fileName.replace(/\.[a-z]+$/i, ""));
+  if (fromName) return { type: fromName, source: "file name", detail: `The file name "${fileName}" says ${fromName}.` };
+  const fromSheet = F.surveyTypeFromText(sheetName);
+  if (fromSheet) return { type: fromSheet, source: "sheet name", detail: `The sheet is called "${sheetName}".` };
+  const titles = grid.slice(0, headerIndex).map((r) => (r || []).map(str).filter(Boolean).join(" ")).filter(Boolean);
+  const fromTitle = F.surveyTypeFromText(titles.join(" "));
+  if (fromTitle) return { type: fromTitle, source: "title", detail: `The title row says "${titles.join(" ").slice(0, 80)}".` };
+  if (ai && ai.available()) {
+    const result = await ai.suggestSurveyType({ fileName, sheetName, titleRows: titles.slice(0, 3), headers: headers.slice(0, 40) });
+    if (result.ok && result.data.type)
+      return { type: result.data.type, source: "AI", detail: result.data.reason || "Suggested by AI from the column headers." };
+  }
+  return { type: null, source: "unknown", detail: "Nothing in the file says whether it's a pre- or post-survey." };
+}
+
 module.exports = scrub;
+module.exports.detectSurveyType = detectSurveyType;

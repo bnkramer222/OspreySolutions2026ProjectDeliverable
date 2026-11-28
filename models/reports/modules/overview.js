@@ -22,7 +22,7 @@ module.exports = {
       tiles: [
         { label: "Students reached", value: fmt.int(reached), note: "took at least one survey" },
         { label: "Completed both surveys", value: fmt.int(data.pairs.length), note: completion === null ? "" : `${fmt.pct(completion)} of pre-survey students` },
-        { label: "Schools & universities", value: fmt.int(new Set(all.map((r) => r.school).filter(Boolean)).size), note: `${byProgram.length} program${byProgram.length === 1 ? "" : "s"}` },
+        { label: "Schools & sites", value: fmt.int(new Set(all.map((r) => r.school).filter(Boolean)).size), note: `${byProgram.length} program${byProgram.length === 1 ? "" : "s"}` },
         { label: "Surveys collected", value: fmt.int(all.length), note: `${fmt.int(data.pre.length)} pre · ${fmt.int(data.post.length)} post` },
       ],
       byProgram,

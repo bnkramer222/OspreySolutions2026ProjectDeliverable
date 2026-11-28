@@ -10,6 +10,22 @@
 
 const PROGRAMS = ["My Money Grows", "Collegiate Workshop"];
 
+// Where a session happened. Not every session is at a school: seminars,
+// community groups and workplaces are sites too.
+const SITE_TYPES = ["High school", "Middle school", "University / college", "Seminar / workshop", "Community organization", "Workplace", "Other"];
+
+// Guess the site type from a site's name ("Lincoln HS" -> High school)
+function inferSiteType(name) {
+  const v = String(name || "").toLowerCase();
+  if (/seminar|workshop|webinar|conference|summit|bootcamp|boot camp|clinic/.test(v)) return "Seminar / workshop";
+  if (/middle school|\bms\b|junior high|jr\.? high/.test(v)) return "Middle school";
+  if (/high school|\bhs\b|\bh\.s\.|secondary|academy|prep\b/.test(v)) return "High school";
+  if (/universit|college|\buniv\b|community college|\bhbcu\b/.test(v)) return "University / college";
+  if (/ymca|boys (and|&) girls|church|library|community|center|centre|foundation|nonprofit|club\b/.test(v)) return "Community organization";
+  if (/bank|credit union|inc\b|llc|corp|company|financial/.test(v)) return "Workplace";
+  return null;
+}
+
 // Lowercase, no punctuation, single spaces: "Q1. Budget  Conf.?" -> "q1 budget conf"
 const normalizeHeader = (text) =>
   String(text || "")
@@ -32,7 +48,8 @@ const INFO_FIELDS = [
   { key: "participant_id", label: "Participant ID", match: [/^(student|participant|learner|user|respondent)? ?(id|number|no|num|code)$/, /^(student|participant|learner|respondent)$/, /^id$/, /\bstudent id\b/, /\bparticipant id\b/] },
   { key: "survey_date", label: "Survey date", match: [/\bdate\b/, /timestamp/, /submitted/, /completed at/] },
   { key: "program", label: "Program", match: [/^program( name)?$/, /^workshop$/, /^course$/] },
-  { key: "school", label: "School / university", match: [/\bschool\b(?! year)/, /universit/, /\bcollege name\b/, /institution/, /campus/] },
+  { key: "school", label: "School / site", match: [/\bschool\b(?! year| type)/, /universit/, /\bcollege name\b/, /institution/, /campus/, /^(site|venue|organization|organisation|host|host site|partner)( name)?$/] },
+  { key: "site_type", label: "Site type", match: [/^(site|school|venue|organization|setting) type$/, /^setting$/] },
   { key: "location", label: "Location", match: [/^(location|city|state|city state|region|county)$/] },
   { key: "grade_level", label: "Grade level", match: [/\bgrade\b/, /^class(ification)?$/, /year in school/, /^level$/] },
   { key: "cohort", label: "Cohort", match: [/cohort/, /^(term|semester|session)$/] },
@@ -181,6 +198,12 @@ function participantId(raw) {
   return v ? { value: v } : { value: null };
 }
 
+function siteType(raw) {
+  const v = text(raw).toLowerCase();
+  const exact = SITE_TYPES.find((t) => t.toLowerCase() === v);
+  return { value: exact || inferSiteType(v) || "Other" };
+}
+
 function surveyType(raw) {
   const v = text(raw).toLowerCase();
   if (/^pre|before|baseline|start/.test(v)) return { value: "pre" };
@@ -218,16 +241,18 @@ const nameKey = (v) =>
     .replace(/\bes\b/g, "elementary school")
     .replace(/\buniv\b/g, "university")
     .replace(/\bh s\b/g, "high school")
-    .replace(/\bst\b/g, "state")
-    .replace(/\b(the|of)\b/g, " ")
+    .replace(/\b(the)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    // "Riverside High" = "Riverside High School", "Peachtree State" = "Peachtree State University"
-    .replace(/ (school|university|college|academy)$/, "");
+    // "Riverside High" = "Riverside High School". Only this one shortcut:
+    // "Peachtree State University" and "Peachtree State College" are
+    // different places, so university/college endings are never dropped.
+    .replace(/ (high|middle|elementary) school$/, " $1");
 
 // Which cleaner to run for each field
 function cleanerFor(key, kind) {
   if (key === "survey_type") return surveyType;
+  if (key === "site_type") return siteType;
   if (key === "participant_id") return participantId;
   if (key === "survey_date") return date;
   if (key === "program") return program;
@@ -253,8 +278,22 @@ function detectKind(values) {
   return null; // free text: not stored as a question
 }
 
+// Pre or post, from words like "pre-survey", "baseline", "post test", "exit"
+// in a file name, sheet name or title row. Returns 'pre', 'post' or null.
+function surveyTypeFromText(textValue) {
+  const v = ` ${String(textValue || "").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  const pre = /\s(pre|pretest|presurvey|preassessment|before|baseline|intake|start|beginning)\s/.test(v);
+  const post = /\s(post|posttest|postsurvey|postassessment|after|exit|end|final|followup|follow up|completion)\s/.test(v);
+  if (pre && !post) return "pre";
+  if (post && !pre) return "post";
+  return null;
+}
+
 module.exports = {
   PROGRAMS,
+  SITE_TYPES,
+  inferSiteType,
+  surveyTypeFromText,
   INFO_FIELDS,
   QUESTIONS,
   ALL_FIELDS,

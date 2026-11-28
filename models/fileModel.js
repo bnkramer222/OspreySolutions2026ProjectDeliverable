@@ -19,10 +19,12 @@ const TYPES = ["pre", "post"];
 // Add a line here to add a choice; the form updates automatically.
 const PROGRAMS = ["My Money Grows", "Collegiate Workshop"];
 const YEARS = ["2024-25", "2025-26", "2026-27", "2027-28"];
+const SITE_TYPES = require("./scrubber/fields").SITE_TYPES;
 
 // Turns a database row into the object the view uses
 const toFile = (row) => ({
   id: row.id,
+  siteType: row.site_type || null,
   status: row.status,                 // new / stored / imported
   rowCount: row.row_count || 0,       // survey rows imported from this file
   waiting: Boolean(row.waiting),      // true = a version is waiting for review
@@ -38,12 +40,13 @@ const toFile = (row) => ({
 
 // Every column except "content" (the file itself), so lists stay fast
 const INFO_COLUMNS =
-  "id, type, name, size, program, school, cohort, year, uploaded_at, status, row_count, imported_at, (staging IS NOT NULL) AS waiting";
+  "id, type, name, size, program, school, cohort, year, uploaded_at, status, row_count, imported_at, (staging IS NOT NULL) AS waiting, site_type";
 
 module.exports = {
   TYPES,
   PROGRAMS,
   YEARS,
+  SITE_TYPES,
 
   // Returns every file in one section, newest first, e.g. await getAll('pre').
   async getAll(type) {
@@ -73,31 +76,34 @@ module.exports = {
   // Same name in the same section = a new version (story #19). The new
   // version waits in pending_content, so the old one keeps working
   // until the new one is approved.
-  async save(type, name, content, tags, userId) {
+  // detection = how pre/post was decided (see scrubber detectSurveyType)
+  async save(type, name, content, tags, userId, detection = null) {
     const cleanTags = {
       program: tags.program || null,
       school: tags.school || null,
       cohort: tags.cohort || null,
       year: tags.year || null,
+      site_type: tags.site_type || null,
     };
     const existing = await db.get("SELECT id, status FROM files WHERE type = $1 AND name = $2", [type, name]);
     if (existing && existing.status !== "new") {
       await db.run(
-        `UPDATE files SET pending_content = $2, pending_tags = $3 WHERE id = $1`,
-        [existing.id, content, JSON.stringify(cleanTags)],
+        `UPDATE files SET pending_content = $2, pending_tags = $3, type_detection = $4 WHERE id = $1`,
+        [existing.id, content, JSON.stringify(cleanTags), detection && JSON.stringify(detection)],
       );
       return existing.id;
     }
     const row = await db.get(
-      `INSERT INTO files (type, name, size, content, program, school, cohort, year, uploaded_at, status, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10)
+      `INSERT INTO files (type, name, size, content, program, school, cohort, year, uploaded_at, status, uploaded_by, site_type, type_detection)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12)
        ON CONFLICT (type, name) DO UPDATE SET
          size = EXCLUDED.size, content = EXCLUDED.content,
          program = EXCLUDED.program, school = EXCLUDED.school,
          cohort = EXCLUDED.cohort, year = EXCLUDED.year,
-         uploaded_at = EXCLUDED.uploaded_at, uploaded_by = EXCLUDED.uploaded_by
+         uploaded_at = EXCLUDED.uploaded_at, uploaded_by = EXCLUDED.uploaded_by,
+         site_type = EXCLUDED.site_type, type_detection = EXCLUDED.type_detection
        RETURNING id`,
-      [type, name, content.length, content, cleanTags.program, cleanTags.school, cleanTags.cohort, cleanTags.year, new Date().toISOString(), userId || null],
+      [type, name, content.length, content, cleanTags.program, cleanTags.school, cleanTags.cohort, cleanTags.year, new Date().toISOString(), userId || null, cleanTags.site_type, detection && JSON.stringify(detection)],
     );
     return row.id;
   },

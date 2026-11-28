@@ -29,31 +29,37 @@
       BEFORE the file input so the server can check them first. %>
   <section class="card">
     <div class="card-head">
-      <div><h2>Upload a survey file</h2><p>Tags fill in anything the file leaves out, like the school or cohort.</p></div>
+      <div><h2>Upload a survey file</h2><p>Tags fill in anything the file leaves out, like the site or cohort. A seminar or community group works the same as a school.</p></div>
       <span class="small muted" title="AI suggestions use Groq's free tier">
         <% if (aiUsage.enabled) { %>AI suggestions on · <%= aiUsage.requests %> request<%= aiUsage.requests === 1 ? '' : 's' %> today<% } else { %>AI suggestions off (no GROQ_API_KEY). Rules still clean the file.<% } %>
       </span>
     </div>
-    <form id="upload-form" class="dropzone" action="/files/<%= current === 'post' ? 'post' : 'pre' %>/upload" method="POST" enctype="multipart/form-data">
+    <form id="upload-form" class="dropzone" action="/files/upload" method="POST" enctype="multipart/form-data">
       <input type="hidden" name="returnTo" value="<%= basePath %>">
       <div class="form-grid">
-        <% if (current === 'all') { %>
-          <fieldset class="field" style="border:0;padding:0;margin:0">
-            <legend style="padding:0;margin-bottom:6px">Survey *</legend>
-            <div class="row">
-              <label class="check"><input type="radio" name="survey" value="pre" checked> Pre</label>
-              <label class="check"><input type="radio" name="survey" value="post"> Post</label>
-            </div>
-          </fieldset>
-        <% } %>
+        <fieldset class="field span-2" style="border:0;padding:0;margin:0">
+          <legend style="padding:0;margin-bottom:6px">Pre or post survey?</legend>
+          <div class="row">
+            <label class="check"><input type="radio" name="survey" value="auto" checked> Detect automatically</label>
+            <label class="check"><input type="radio" name="survey" value="pre"> Pre</label>
+            <label class="check"><input type="radio" name="survey" value="post"> Post</label>
+          </div>
+          <span class="hint">Reads the file name, sheet name, title and columns. If it can't tell, you choose on the next page.</span>
+        </fieldset>
         <label class="field">Program *
           <select name="program" required>
             <option value="">Choose…</option>
             <% programs.forEach((p) => { %><option><%= p %></option><% }) %>
           </select>
         </label>
-        <label class="field">School / university *
-          <input type="text" name="school" maxlength="120" placeholder="e.g. Lincoln High School" required>
+        <label class="field">School / site *
+          <input type="text" name="school" maxlength="120" placeholder="e.g. Lincoln High School, Money Moves Seminar" required>
+        </label>
+        <label class="field">Site type
+          <select name="site_type">
+            <option value="">Work it out from the name</option>
+            <% siteTypes.forEach((t) => { %><option><%= t %></option><% }) %>
+          </select>
         </label>
         <label class="field">Cohort
           <input type="text" name="cohort" maxlength="60" placeholder="e.g. Fall 2026">
@@ -82,7 +88,7 @@
       <% } else { %>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>File</th><th>Status</th><th>Program</th><th>School</th><th>Cohort</th><th>Year</th><th>Uploaded</th><th><span class="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>File</th><th>Status</th><th>Program</th><th>School / site</th><th>Cohort</th><th>Year</th><th>Uploaded</th><th><span class="sr-only">Actions</span></th></tr></thead>
             <tbody>
               <% files.forEach((f) => {
                    const fileUrl = '/files/' + type + '/' + encodeURIComponent(f.name);
@@ -95,7 +101,7 @@
                     <% } else { %><span class="badge badge-warn">Not imported</span><% } %>
                   </td>
                   <td><%= f.program || '—' %></td>
-                  <td><%= f.school || '—' %></td>
+                  <td><%= f.school || '—' %><% if (f.siteType) { %><div class="tiny muted"><%= f.siteType %></div><% } %></td>
                   <td><%= f.cohort || '—' %></td>
                   <td><%= f.year || '—' %></td>
                   <td class="nowrap small"><%= f.uploadedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></td>
@@ -139,11 +145,6 @@
 
 <script>
   (function () {
-    // Pre/Post choice decides where the upload goes
-    var form = document.getElementById('upload-form');
-    document.querySelectorAll('input[name="survey"]').forEach(function (r) {
-      r.addEventListener('change', function () { form.action = '/files/' + r.value + '/upload'; });
-    });
     // Delete pop-up
     var dialog = document.getElementById('del'), delForm = document.getElementById('del-form');
     var input = document.getElementById('del-input'), submit = document.getElementById('del-submit');

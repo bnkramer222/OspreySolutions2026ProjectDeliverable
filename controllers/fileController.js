@@ -26,6 +26,7 @@ const buildSection = async (type) => ({
 // Data every version of the files page needs
 const pageData = async (req) => ({
   programs: fileModel.PROGRAMS, // dropdown choices (story #41)
+  siteTypes: fileModel.SITE_TYPES,
   years: fileModel.YEARS,
   labels: LABELS,
   aiUsage: await surveyModel.aiUsage(),
@@ -59,20 +60,35 @@ exports.section = exports.index;
 // into memory (req.file.buffer). Here we save it, run the scrubber,
 // and send the admin to the review page.
 exports.upload = async (req, res, next) => {
-  const { type } = req.params;
-  const back = req.body.returnTo === "/files" ? "/files" : `/files/${type}`;
+  const back = ["/files", "/files/pre", "/files/post"].includes(req.body.returnTo) ? req.body.returnTo : "/files";
 
   if (req.uploadError) return sendBack(res, back, "error", req.uploadError);
   if (!req.file) return sendBack(res, back, "error", "Please choose a CSV or Excel file to upload.");
+
+  // Pre or post: chosen on the form, or worked out from the file
+  // (file name, sheet name, title row, a Pre/Post column, then AI).
+  const name = path.basename(req.file.originalname);
+  const chosen = req.params.type || (fileModel.TYPES.includes(req.body.survey) ? req.body.survey : null);
+  let type = chosen;
+  let detection = { source: "chosen", detail: "Chosen when uploading." };
+  if (!chosen) {
+    try {
+      detection = await surveyModel.detectSurveyType(req.file.buffer, name);
+    } catch (err) {
+      return sendBack(res, back, "error", `"${name}" couldn't be read: ${err.message}`);
+    }
+    type = detection.type || "pre"; // unknown: parked under Pre until the admin chooses on the review page
+  }
 
   let id;
   try {
     id = await fileModel.save(
       type,
-      path.basename(req.file.originalname),
+      name,
       req.file.buffer,
-      { program: req.body.program, school: req.body.school.trim(), cohort: (req.body.cohort || "").trim(), year: req.body.year },
+      { program: req.body.program, school: req.body.school.trim(), cohort: (req.body.cohort || "").trim(), year: req.body.year, site_type: req.body.site_type },
       req.session.user.id,
+      detection,
     );
   } catch (err) {
     return next(err);
@@ -107,6 +123,7 @@ exports.review = async (req, res, next) => {
     if (!file.staging) return sendBack(res, `/files/${file.type}`, "success", `"${file.name}" has no changes waiting for review.`);
     const { result, overrides } = file.staging;
     res.render("files/review", {
+      detection: file.type_detection || { source: "chosen", detail: "" },
       title: `Review ${file.name}`,
       file,
       label: LABELS[file.type],
@@ -143,12 +160,23 @@ exports.saveReview = async (req, res, next) => {
     const file = await surveyModel.getStaged(id);
     if (!file || !file.staging) return res.redirect("/files");
     const overrides = readOverrides(req.body, file.staging.result);
-    if (!sameOverrides(overrides, file.staging.overrides)) await surveyModel.prepare(id, overrides);
+    // Pre/Post chosen (or corrected) on the review page
+    const picked = fileModel.TYPES.includes(req.body.surveyType) ? req.body.surveyType : null;
+    const unknown = file.type_detection && file.type_detection.source === "unknown";
+    let typeChanged = false;
+    if (picked && (picked !== file.type || unknown)) {
+      const detection = { source: "admin", detail: "Chosen on the review page." };
+      if (picked !== file.type) await surveyModel.moveSection(id, picked, detection);
+      else await require("../db/database").run("UPDATE files SET type_detection = $2 WHERE id = $1", [id, JSON.stringify(detection)]);
+      typeChanged = picked !== file.type;
+    }
+    if (typeChanged || !sameOverrides(overrides, file.staging.overrides)) await surveyModel.prepare(id, { ...overrides, reuseAi: true });
     if (!approving) return sendBack(res, `/files/review/${id}`, "success", "Updated. Check the preview below.");
     const count = await surveyModel.approve(id, req.session.user.id);
-    sendBack(res, `/files/${file.type}`, "success", `✓ "${file.name}" imported: ${count} ${count === 1 ? "response" : "responses"} added to ${LABELS[file.type]} data.`);
+    const finalType = picked || file.type;
+    sendBack(res, `/files/${finalType}`, "success", `✓ "${file.name}" imported: ${count} ${count === 1 ? "response" : "responses"} added to ${LABELS[finalType]} data.`);
   } catch (err) {
-    if (/couldn't|isn't|No survey answers|empty/.test(err.message)) return sendBack(res, `/files/review/${id}`, "error", err.message);
+    if (/couldn't|can't|isn't|No survey answers|empty|already has|Choose whether/.test(err.message)) return sendBack(res, `/files/review/${id}`, "error", err.message);
     next(err);
   }
 };

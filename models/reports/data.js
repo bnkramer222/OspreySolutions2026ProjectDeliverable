@@ -15,7 +15,8 @@ const db = require("../../db/database");
 // Filters the report builder offers. "column" is the survey_responses column.
 const FILTERS = [
   { key: "program", label: "Program", column: "program" },
-  { key: "school", label: "School / university", column: "school" },
+  { key: "siteType", label: "Site type", column: "site_type" },
+  { key: "school", label: "School / site", column: "school" },
   { key: "cohort", label: "Cohort", column: "cohort" },
   { key: "year", label: "Academic year", column: "year" },
   { key: "grade", label: "Grade level", column: "grade_level" },
@@ -47,7 +48,7 @@ async function load(filters = {}) {
 
   const [rows, questions] = await Promise.all([
     db.all(
-      `SELECT id, survey_type, participant_id, program, school, location, grade_level, cohort, year, survey_date, answers
+      `SELECT id, survey_type, participant_id, program, school, site_type, location, grade_level, cohort, year, survey_date, answers
        FROM survey_responses ${clause} ORDER BY id`,
       params,
     ),
@@ -66,7 +67,7 @@ async function load(filters = {}) {
   const pairs = [];
   for (const [k, p] of preBy) {
     const q = postBy.get(k);
-    if (q) pairs.push({ id: p.participant_id, school: p.school, program: p.program, cohort: p.cohort, year: p.year, grade_level: p.grade_level, pre: p.answers, post: q.answers });
+    if (q) pairs.push({ id: p.participant_id, school: p.school, site_type: p.site_type, program: p.program, cohort: p.cohort, year: p.year, grade_level: p.grade_level, pre: p.answers, post: q.answers });
   }
 
   // Only questions that appear in the filtered data

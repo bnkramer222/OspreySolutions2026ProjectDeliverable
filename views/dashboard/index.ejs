@@ -21,7 +21,7 @@
     <div class="kpi"><div class="kpi-label">Students reached</div><div class="kpi-value"><%= fmt.int(o.participants) %></div><div class="kpi-note">unique student IDs</div></div>
     <div class="kpi"><div class="kpi-label">Completed both surveys</div><div class="kpi-value"><%= fmt.int(o.matched) %></div><div class="kpi-note"><%= o.participants ? fmt.pct(o.matched / o.participants * 100) : '—' %> of students</div></div>
     <div class="kpi"><div class="kpi-label">Survey responses</div><div class="kpi-value"><%= fmt.int(o.pre_responses + o.post_responses) %></div><div class="kpi-note"><%= fmt.int(o.pre_responses) %> pre · <%= fmt.int(o.post_responses) %> post</div></div>
-    <div class="kpi"><div class="kpi-label">Schools & universities</div><div class="kpi-value"><%= fmt.int(o.schools) %></div><div class="kpi-note"><a href="/dashboard/schools">See all schools →</a></div></div>
+    <div class="kpi"><div class="kpi-label">Schools & sites</div><div class="kpi-value"><%= fmt.int(o.schools) %></div><div class="kpi-note"><a href="/dashboard/schools">See all sites →</a></div></div>
   </div>
 
   <% if (!o.pre_responses && !o.post_responses) { %>
@@ -49,7 +49,7 @@
     <div class="card-head"><div><h2>Recent imports</h2></div><a class="small" href="/dashboard/data">Browse all responses →</a></div>
     <% if (!recent.length) { %><div class="empty">Nothing imported yet.</div><% } else { %>
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>File</th><th>Survey</th><th>School</th><th>Program</th><th class="num">Responses</th><th>Imported</th><th>By</th></tr></thead>
+        <thead><tr><th>File</th><th>Survey</th><th>School / site</th><th>Program</th><th class="num">Responses</th><th>Imported</th><th>By</th></tr></thead>
         <tbody><% recent.forEach((f) => { %>
           <tr><td><%= f.name %></td><td><span class="badge badge-<%= f.type %>"><%= f.type === 'pre' ? 'Pre' : 'Post' %></span></td><td><%= f.school || '—' %></td><td><%= f.program || '—' %></td>
             <td class="num"><%= f.row_count %></td><td class="nowrap small"><%= f.imported_at ? new Date(f.imported_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—' %></td><td class="small"><%= f.uploaded_by || '—' %></td></tr>

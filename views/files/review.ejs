@@ -27,7 +27,7 @@
     <div>
       <div class="steps" aria-label="Import steps"><span class="done"><b>✓</b> Upload</span><span class="now"><b>2</b> Review</span><span><b>3</b> Import</span></div>
       <h1 style="margin-top:12px"><%= file.name %></h1>
-      <p><span class="badge badge-<%= file.type %>"><%= label %></span>
+      <p><% if (file.type_detection && file.type_detection.source === 'unknown') { %><span class="badge badge-review">Pre or post?</span><% } else { %><span class="badge badge-<%= file.type %>"><%= file.type === 'pre' ? 'Pre-Survey' : 'Post-Survey' %></span><% } %>
         <% if (file.is_replacement) { %> · New version: approving replaces the previous version's responses.<% } %>
         <% if (result.sheetName) { %> · Sheet "<%= result.sheetName %>"<% } %> · Headers found on row <%= result.headerRow %></p>
     </div>
@@ -41,14 +41,38 @@
     <div class="alert alert-info">The AI helped with <%= result.ai.requests %> question<%= result.ai.requests === 1 ? '' : 's' %> (column names or spellings). Its suggestions are marked <span class="badge badge-ai">AI suggestion</span>. Untick any you don't agree with.</div>
   <% } %>
 
+  <form method="POST" action="/files/review/<%= file.id %>" id="review-form" class="stack" style="gap:24px">
+
+  <%# ---- Pre or post? ---- %>
+  <% const unknownType = detection.source === 'unknown'; const fromColumn = detection.source === 'column'; %>
+  <section class="card" style="border-left:6px solid <%= unknownType ? 'var(--yellow)' : 'var(--teal)' %>">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <h2><% if (unknownType) { %>Is this a pre- or post-survey?<% } else if (fromColumn) { %>Pre and post are marked on each row<% } else { %>This is a <%= file.type === 'pre' ? 'pre' : 'post' %>-survey<% } %></h2>
+        <p class="small muted" style="margin-top:4px">
+          <% if (unknownType) { %>Nothing in the file says. Choose one before importing.
+          <% } else if (fromColumn) { %>The file has a Pre/Post column, so each row is sorted on its own (<%= result.rows.filter((r) => r.survey_type === 'pre').length %> pre, <%= result.rows.filter((r) => r.survey_type === 'post').length %> post).
+          <% } else { %>Detected from the <strong><%= detection.source %></strong>. <%= detection.detail %><% } %>
+        </p>
+      </div>
+      <% if (!fromColumn) { %>
+        <label class="field" style="min-width:220px"><%= unknownType ? 'Choose *' : 'Wrong? Change it' %>
+          <select name="surveyType" <%= unknownType ? 'required' : '' %>>
+            <% if (unknownType) { %><option value="">Choose…</option><% } %>
+            <option value="pre" <%= !unknownType && file.type === 'pre' ? 'selected' : '' %>>Pre-survey (before the program)</option>
+            <option value="post" <%= !unknownType && file.type === 'post' ? 'selected' : '' %>>Post-survey (after the program)</option>
+          </select>
+        </label>
+      <% } %>
+    </div>
+  </section>
+
   <div class="kpis">
     <div class="kpi"><div class="kpi-label">Rows read</div><div class="kpi-value"><%= result.stats.rowsRead %></div><div class="kpi-note">after the header row</div></div>
     <div class="kpi"><div class="kpi-label">Ready to import</div><div class="kpi-value"><%= result.stats.rowsReady %></div><div class="kpi-note"><%= result.stats.withId %> with a student ID</div></div>
     <div class="kpi"><div class="kpi-label">Values cleaned</div><div class="kpi-value"><%= result.changes.reduce((n, c) => n + c.count, 0) %></div><div class="kpi-note"><%= result.changes.length %> kinds of fixes</div></div>
     <div class="kpi"><div class="kpi-label">Problems</div><div class="kpi-value"><%= result.issueCount %></div><div class="kpi-note"><%= errors %> row<%= errors === 1 ? '' : 's' %> skipped · <%= removedTotal %> junk rows removed</div></div>
   </div>
-
-  <form method="POST" action="/files/review/<%= file.id %>" class="stack" style="gap:24px">
 
     <%# ---- Columns ---- %>
     <section class="card card-flush">
@@ -149,12 +173,12 @@
       <div class="card-head"><div><h2>Preview</h2><p>The first <%= preview.length %> of <%= result.rows.length %> cleaned rows, as they'll be saved.</p></div></div>
       <div class="table-wrap">
         <table class="table">
-          <thead><tr><th>Row</th><th>Survey</th><th>Student ID</th><th>School</th><th>Program</th><th>Grade</th><th>Cohort</th><th>Date</th>
+          <thead><tr><th>Row</th><th>Survey</th><th>Student ID</th><th>School / site</th><th>Site type</th><th>Program</th><th>Grade</th><th>Cohort</th><th>Date</th>
             <% questionCols.forEach((q) => { %><th class="num" title="<%= q.label %>"><%= q.label.length > 18 ? q.label.slice(0, 17) + '…' : q.label %></th><% }) %></tr></thead>
           <tbody>
             <% preview.forEach((row) => { %>
               <tr><td class="muted"><%= row.rowNumber %></td><td><span class="badge badge-<%= row.survey_type %>"><%= row.survey_type %></span></td>
-                <td><%= row.participant_id || '—' %></td><td class="nowrap"><%= row.school || '—' %></td><td class="nowrap"><%= row.program || '—' %></td>
+                <td><%= row.participant_id || '—' %></td><td class="nowrap"><%= row.school || '—' %></td><td class="nowrap small"><%= row.site_type || '—' %></td><td class="nowrap"><%= row.program || '—' %></td>
                 <td><%= row.grade_level || '—' %></td><td class="nowrap"><%= row.cohort || '—' %></td><td class="nowrap"><%= fmtDate(row.survey_date) %></td>
                 <% questionCols.forEach((q) => { const v = row.answers[q.key]; %><td class="num"><%= v === undefined ? '—' : q.kind === 'score' ? v + '%' : v %></td><% }) %></tr>
             <% }) %>

@@ -39,7 +39,7 @@ async function prepare(fileId, overrides = {}) {
   const file = await db.get("SELECT * FROM files WHERE id = $1", [fileId]);
   if (!file) throw new Error("File not found");
   const content = file.pending_content || file.content;
-  const tags = file.pending_tags || { program: file.program, school: file.school, cohort: file.cohort, year: file.year };
+  const tags = file.pending_tags || { program: file.program, school: file.school, cohort: file.cohort, year: file.year, site_type: file.site_type };
   const context = await loadContext();
   // Re-scrubbing after the admin changes a column: reuse the AI answers
   // from the first pass instead of asking again (saves free-tier requests).
@@ -64,21 +64,41 @@ async function prepare(fileId, overrides = {}) {
     result.changes.forEach((c) => c.source === "saved" && prevChanges[c.id] && prevChanges[c.id].source === "ai" && (c.source = "ai"));
     result.ai = previous.ai;
   }
+  // File has its own Pre/Post column: the file goes in whichever section most rows belong to
+  if (file.type_detection && file.type_detection.source === "column") {
+    const post = result.rows.filter((r) => r.survey_type === "post").length;
+    const majority = post > result.rows.length / 2 ? "post" : "pre";
+    if (majority !== file.type && file.status === "new") await moveSection(fileId, majority).catch(() => {});
+  }
   await db.run("UPDATE files SET staging = $1 WHERE id = $2", [JSON.stringify({ result, overrides }), fileId]);
   return result;
+}
+
+// Moves a not-yet-approved upload between Pre and Post.
+// Throws if the other section already has a file with the same name.
+async function moveSection(fileId, type, detection) {
+  const file = await db.get("SELECT name, status, type FROM files WHERE id = $1", [fileId]);
+  if (!file || file.type === type) return;
+  if (file.status !== "new") throw new Error("An already-imported file can't be moved. Delete it and upload it again.");
+  const clash = await db.get("SELECT id FROM files WHERE type = $1 AND name = $2", [type, file.name]);
+  if (clash) throw new Error(`The ${type === "pre" ? "Pre" : "Post"}-Survey section already has a file called "${file.name}". Rename one of them.`);
+  await db.run("UPDATE files SET type = $2, type_detection = COALESCE($3, type_detection) WHERE id = $1", [fileId, type, detection ? JSON.stringify(detection) : null]);
 }
 
 // Writes the approved rows. Everything happens in one transaction,
 // so a failure never leaves half a file in the database.
 async function approve(fileId, userId) {
-  const file = await db.get("SELECT id, type, staging, pending_tags, status FROM files WHERE id = $1", [fileId]);
+  const file = await db.get("SELECT id, type, staging, pending_tags, status, type_detection FROM files WHERE id = $1", [fileId]);
   if (!file || !file.staging) throw new Error("Nothing is waiting for review for this file.");
+  if (file.type_detection && file.type_detection.source === "unknown")
+    throw new Error("Choose whether this is a pre- or post-survey before importing.");
   const { result, overrides } = file.staging;
   const rows = result.rows.map((r) => ({
     survey_type: r.survey_type,
     participant_id: r.participant_id || null,
     program: r.program || null,
     school: r.school || null,
+    site_type: r.site_type || null,
     location: r.location || null,
     grade_level: r.grade_level || null,
     cohort: r.cohort || null,
@@ -91,9 +111,9 @@ async function approve(fileId, userId) {
     // Re-upload: the new version replaces the old version's rows
     await tx.query("DELETE FROM survey_responses WHERE file_id = $1", [fileId]);
     await tx.query(
-      `INSERT INTO survey_responses (file_id, survey_type, participant_id, program, school, location, grade_level, cohort, year, survey_date, answers)
-       SELECT $1, x.survey_type, x.participant_id, x.program, x.school, x.location, x.grade_level, x.cohort, x.year, x.survey_date, x.answers
-       FROM jsonb_to_recordset($2::jsonb) AS x(survey_type text, participant_id text, program text, school text, location text,
+      `INSERT INTO survey_responses (file_id, survey_type, participant_id, program, school, site_type, location, grade_level, cohort, year, survey_date, answers)
+       SELECT $1, x.survey_type, x.participant_id, x.program, x.school, x.site_type, x.location, x.grade_level, x.cohort, x.year, x.survey_date, x.answers
+       FROM jsonb_to_recordset($2::jsonb) AS x(survey_type text, participant_id text, program text, school text, site_type text, location text,
             grade_level text, cohort text, year text, survey_date date, answers jsonb)`,
       [fileId, JSON.stringify(rows)],
     );
@@ -129,9 +149,10 @@ async function approve(fileId, userId) {
                             ELSE to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') END,
          content = COALESCE(pending_content, content), pending_content = NULL, pending_tags = NULL,
          program = COALESCE($4, program), school = COALESCE($5, school), cohort = COALESCE($6, cohort), year = COALESCE($7, year),
+         site_type = COALESCE($9, site_type),
          uploaded_by = COALESCE($8, uploaded_by)
        WHERE id = $1`,
-      [fileId, rows.length, JSON.stringify(summary), tags && tags.program, tags && tags.school, tags && tags.cohort, tags && tags.year, userId || null],
+      [fileId, rows.length, JSON.stringify(summary), tags && tags.program, tags && tags.school, tags && tags.cohort, tags && tags.year, userId || null, tags && tags.site_type],
     );
   });
   return rows.length;
@@ -148,7 +169,7 @@ async function discard(fileId) {
 
 async function getStaged(fileId) {
   return db.get(
-    `SELECT id, type, name, status, program, school, cohort, year, staging, pending_tags,
+    `SELECT id, type, name, status, program, school, cohort, year, staging, pending_tags, type_detection,
             (pending_content IS NOT NULL) AS is_replacement
      FROM files WHERE id = $1`,
     [fileId],
@@ -180,7 +201,7 @@ async function recentImports(limit = 6) {
 
 async function schools() {
   return db.all(`
-    SELECT school, max(location) AS location,
+    SELECT school, max(location) AS location, max(site_type) AS site_type,
            count(*) FILTER (WHERE survey_type = 'pre')::int  AS pre_count,
            count(*) FILTER (WHERE survey_type = 'post')::int AS post_count,
            array_agg(DISTINCT program) FILTER (WHERE program IS NOT NULL) AS programs
@@ -208,4 +229,4 @@ async function responses({ type, search, school, page = 1, perPage = 50 }) {
   return { total, rows, page: Math.max(1, page), pages: Math.max(1, Math.ceil(total / perPage)) };
 }
 
-module.exports = { prepare, approve, discard, getStaged, overview, recentImports, schools, responses, aiUsage: ai.usageToday, FIELDS: F.ALL_FIELDS };
+module.exports = { prepare, approve, discard, moveSection, detectSurveyType: (buffer, name) => scrub.detectSurveyType(buffer, name, ai), getStaged, overview, recentImports, schools, responses, aiUsage: ai.usageToday, FIELDS: F.ALL_FIELDS };
