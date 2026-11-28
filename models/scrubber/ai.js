@@ -16,8 +16,37 @@
 
 const db = require("../../db/database");
 
-const URL = "https://api.groq.com/openai/v1/chat/completions";
+const BASE = "https://api.groq.com/openai/v1";
+const URL = `${BASE}/chat/completions`;
 const MODEL = (process.env.GROQ_MODEL || "").trim() || "llama-3.3-70b-versatile";
+
+// Models to try, best first. If the key can't use one (Groq answers 404),
+// the app asks Groq which models this key CAN use and switches to the
+// best one available. The choice is remembered until the server restarts.
+const PREFERRED = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+let activeModel = MODEL;
+
+async function pickAvailableModel() {
+  const response = await fetch(`${BASE}/models`, {
+    headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) return null;
+  const ids = ((await response.json()).data || []).filter((m) => m.active !== false).map((m) => m.id);
+  const usable = ids.filter((id) => !/whisper|tts|guard|playai|orpheus|distil|compound/i.test(id));
+  return PREFERRED.find((id) => usable.includes(id)) || usable[0] || null;
+}
+
+// Pulls the JSON object out of a reply, even if the model wrapped it in text
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const match = String(text).match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw e;
+  }
+}
 
 const available = () => Boolean(process.env.GROQ_API_KEY);
 
@@ -34,23 +63,24 @@ async function recordUsage(tokens) {
 
 async function usageToday() {
   const row = await db.get("SELECT requests, tokens FROM ai_usage WHERE day = CURRENT_DATE");
-  return { requests: row ? row.requests : 0, tokens: row ? row.tokens : 0, enabled: available(), model: MODEL };
+  return { requests: row ? row.requests : 0, tokens: row ? row.tokens : 0, enabled: available(), model: activeModel };
 }
 
 // Sends one question, expects a JSON object back.
 // Returns { ok: true, data } or { ok: false, status, message }.
-async function askJson(system, user) {
+async function askJson(system, user, retried = false) {
   if (!available()) return { ok: false, status: "no_key", message: "No GROQ_API_KEY set, so AI suggestions are off." };
   try {
     const response = await fetch(URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: MODEL,
+        model: activeModel,
         temperature: 0,
-        response_format: { type: "json_object" },
+        // Some models don't support JSON mode; the retry below drops it
+        ...(retried === "plain" ? {} : { response_format: { type: "json_object" } }),
         messages: [
-          { role: "system", content: system },
+          { role: "system", content: system + " Reply with the JSON object only." },
           { role: "user", content: user },
         ],
       }),
@@ -65,12 +95,24 @@ async function askJson(system, user) {
         const body = await response.json();
         reason = (body.error && (body.error.message || body.error.code)) || "";
       } catch (e) { /* not JSON */ }
-      console.error(`Groq error ${response.status} (model ${MODEL}): ${reason}`);
+      console.error(`Groq error ${response.status} (model ${activeModel}): ${reason}`);
+      // This key can't use the model: switch to one it can use, then try once more
+      if (response.status === 404 && !retried) {
+        const next = await pickAvailableModel().catch(() => null);
+        if (next && next !== activeModel) {
+          console.log(`Groq: switching AI model from ${activeModel} to ${next}`);
+          activeModel = next;
+          return askJson(system, user, true);
+        }
+      }
+      // JSON mode not supported by this model: try once without it
+      if (response.status === 400 && /response_format|json/i.test(reason) && retried !== "plain")
+        return askJson(system, user, "plain");
       return { ok: false, status: "error", message: `AI service error (${response.status}${reason ? `: ${reason.slice(0, 160)}` : ""}).` };
     }
     const body = await response.json();
     await recordUsage(body.usage && body.usage.total_tokens);
-    return { ok: true, data: JSON.parse(body.choices[0].message.content) };
+    return { ok: true, data: parseJson(body.choices[0].message.content) };
   } catch (err) {
     return { ok: false, status: "error", message: `AI service unavailable (${err.name === "TimeoutError" ? "timed out" : err.message}).` };
   }
@@ -124,4 +166,4 @@ async function suggestSurveyType(info) {
   return { ok: true, data: { type, reason: String(result.data.reason || "").slice(0, 160) } };
 }
 
-module.exports = { available, usageToday, suggestColumns, suggestValues, suggestSurveyType, MODEL };
+module.exports = { available, usageToday, suggestColumns, suggestValues, suggestSurveyType, get MODEL() { return activeModel; } };
