@@ -5,7 +5,7 @@
 // with another staff member and opens the same way.
 const reports = require("../models/reports");
 
-const FILTER_KEYS = ["program", "school", "cohort", "year", "grade", "from", "to"];
+const FILTER_KEYS = ["program", "siteType", "school", "cohort", "year", "grade", "from", "to"];
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 // Turns the query string into a clean report request

@@ -62,3 +62,16 @@ sample-data/        test files, including deliberately messy ones
 ## Settings (environment variables)
 See `.env.example`. On Vercel: Project → Settings → Environment Variables.
 `GROQ_API_KEY` is optional. Get a free key at console.groq.com.
+
+## Pre or post?
+Uploads detect it automatically, checking in this order: a Pre/Post column
+(each row sorted on its own), the file name ("lincoln_PRE.xlsx"), the sheet
+name, the title row, then the AI. If nothing says, the review page asks, and
+the file can't be imported until someone chooses.
+
+## Sites
+Not every session is at a school. "School / site" can be a high school,
+university, seminar, community group or workplace. The site type is taken
+from the upload form, a "Site type" column, or guessed from the name
+("Money Moves Seminar" → Seminar / workshop). Different institutions are
+never merged ("Peachtree State University" ≠ "Peachtree State College").

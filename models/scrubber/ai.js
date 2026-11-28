@@ -100,4 +100,19 @@ async function suggestValues(field, values, known) {
   return { ok: true, data: fixes };
 }
 
-module.exports = { available, usageToday, suggestColumns, suggestValues, MODEL };
+// Is this file a pre-survey or a post-survey? Only used when the file
+// name, sheet name and title rows don't say. Sent: file name, sheet
+// name, title rows and column headers (no student answers).
+// -> "pre" | "post" | null
+async function suggestSurveyType(info) {
+  const system =
+    "A youth financial-literacy nonprofit gives students a survey before a program (pre) and after it (post). " +
+    'Decide which one this spreadsheet is from its file name, sheet name, title rows and column headers. Reply with JSON: {"type": "pre" | "post" | "unknown", "reason": "<short reason>"}. ' +
+    'Answer "unknown" unless there is a real clue (for example a question like "What did you learn?" or "How has the program helped you?" suggests post).';
+  const result = await askJson(system, JSON.stringify(info));
+  if (!result.ok) return result;
+  const type = ["pre", "post"].includes(result.data.type) ? result.data.type : null;
+  return { ok: true, data: { type, reason: String(result.data.reason || "").slice(0, 160) } };
+}
+
+module.exports = { available, usageToday, suggestColumns, suggestValues, suggestSurveyType, MODEL };

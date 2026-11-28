@@ -2,7 +2,7 @@
 <%- include('../partials/header') %>
 <div class="page">
   <div class="page-head">
-    <div><div class="eyebrow"><a href="/dashboard">Dashboard</a></div><h1>Schools & universities</h1><p>Every school with imported survey data.</p></div>
+    <div><div class="eyebrow"><a href="/dashboard">Dashboard</a></div><h1>Schools & sites</h1><p>Every school, university, seminar or organization with imported survey data.</p></div>
     <% if (states.length) { %>
       <form method="GET" class="row">
         <label class="field">State
@@ -16,9 +16,9 @@
   <section class="card card-flush">
     <% if (!schools.length) { %><div class="empty"><strong>No schools yet</strong>Import survey files to see schools here.</div><% } else { %>
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>School</th><th>Location</th><th>Programs</th><th class="num">Pre-surveys</th><th class="num">Post-surveys</th><th></th></tr></thead>
+        <thead><tr><th>School / site</th><th>Type</th><th>Location</th><th>Programs</th><th class="num">Pre-surveys</th><th class="num">Post-surveys</th><th></th></tr></thead>
         <tbody><% schools.forEach((s) => { %>
-          <tr><td><strong><%= s.school %></strong></td><td><%= s.location || '—' %></td><td class="small"><%= (s.programs || []).join(', ') || '—' %></td>
+          <tr><td><strong><%= s.school %></strong></td><td class="small"><%= s.site_type || '—' %></td><td><%= s.location || '—' %></td><td class="small"><%= (s.programs || []).join(', ') || '—' %></td>
             <td class="num"><%= s.pre_count %></td><td class="num"><%= s.post_count %></td>
             <td><div class="table-actions"><a class="btn btn-ghost btn-sm" href="/reports?template=sponsor&school=<%= encodeURIComponent(s.school) %>">Report</a><a class="btn btn-ghost btn-sm" href="/dashboard/data?school=<%= encodeURIComponent(s.school) %>">Responses</a></div></td></tr>
         <% }) %></tbody>

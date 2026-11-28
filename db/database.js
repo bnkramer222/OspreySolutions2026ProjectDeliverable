@@ -75,6 +75,8 @@ const SCHEMA = `
   ALTER TABLE files ADD COLUMN IF NOT EXISTS staging     JSONB;       -- scrubber result while in review
   ALTER TABLE files ADD COLUMN IF NOT EXISTS pending_content BYTEA;   -- re-uploaded file waiting for review
   ALTER TABLE files ADD COLUMN IF NOT EXISTS pending_tags    JSONB;
+  ALTER TABLE files ADD COLUMN IF NOT EXISTS site_type       TEXT;    -- High school, Seminar / workshop...
+  ALTER TABLE files ADD COLUMN IF NOT EXISTS type_detection  JSONB;   -- how pre/post was decided: { source, detail, confirmed }
   ALTER TABLE files ADD COLUMN IF NOT EXISTS scrub_report JSONB;      -- summary kept after import
   ALTER TABLE files ADD COLUMN IF NOT EXISTS imported_at TIMESTAMPTZ;
   ALTER TABLE files ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
@@ -85,7 +87,7 @@ const SCHEMA = `
     survey_type    TEXT    NOT NULL CHECK (survey_type IN ('pre', 'post')),
     participant_id TEXT,                      -- student ID (never names)
     program        TEXT,
-    school         TEXT,
+    school         TEXT,                      -- school or site name
     location       TEXT,                      -- city, state
     grade_level    TEXT,                      -- 6-12 or College
     cohort         TEXT,
@@ -94,6 +96,7 @@ const SCHEMA = `
     answers        JSONB   NOT NULL DEFAULT '{}'::jsonb, -- { question_key: value }
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS site_type TEXT; -- High school, Seminar / workshop...
   CREATE INDEX IF NOT EXISTS survey_responses_type_idx ON survey_responses (survey_type);
   CREATE INDEX IF NOT EXISTS survey_responses_participant_idx ON survey_responses (participant_id);
   CREATE INDEX IF NOT EXISTS survey_responses_school_idx ON survey_responses (school);
@@ -125,16 +128,19 @@ const SCHEMA = `
     tokens   INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE OR REPLACE VIEW all_responses AS
+  -- Views are rebuilt on every start so new columns show up in them
+  DROP VIEW IF EXISTS matched_responses, pre_responses, post_responses, all_responses;
+
+  CREATE VIEW all_responses AS
     SELECT r.*, f.name AS file_name
     FROM survey_responses r JOIN files f ON f.id = r.file_id;
 
-  CREATE OR REPLACE VIEW pre_responses  AS SELECT * FROM all_responses WHERE survey_type = 'pre';
-  CREATE OR REPLACE VIEW post_responses AS SELECT * FROM all_responses WHERE survey_type = 'post';
+  CREATE VIEW pre_responses  AS SELECT * FROM all_responses WHERE survey_type = 'pre';
+  CREATE VIEW post_responses AS SELECT * FROM all_responses WHERE survey_type = 'post';
 
   -- One row per student who answered both surveys in the same program + cohort.
   -- DISTINCT ON keeps the latest response if a student appears twice.
-  CREATE OR REPLACE VIEW matched_responses AS
+  CREATE VIEW matched_responses AS
     WITH pre AS (
       SELECT DISTINCT ON (participant_id, coalesce(program,''), coalesce(cohort,''))
              participant_id, program, cohort, school, grade_level, year, answers

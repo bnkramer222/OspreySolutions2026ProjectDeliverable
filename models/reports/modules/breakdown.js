@@ -44,7 +44,8 @@ function make(id, dim, title, noun) {
 }
 
 module.exports = [
-  make("by_school", "school", "Results by school", "school or university"),
+  make("by_school", "school", "Results by school / site", "school or site"),
+  make("by_site_type", "site_type", "Results by site type", "site type (high school, seminar...)"),
   make("by_program", "program", "Results by program", "program"),
   make("by_grade", "grade_level", "Results by grade", "grade level"),
   make("by_cohort", "cohort", "Results by cohort", "cohort"),

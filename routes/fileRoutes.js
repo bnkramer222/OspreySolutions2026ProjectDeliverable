@@ -27,13 +27,14 @@ const upload = multer({
   // The tag fields come before the file in the form, so req.body
   // already has them here.
   fileFilter: (req, file, cb) => {
-    const okType = fileModel.TYPES.includes(req.params.type);
+    // /files/upload (no section in the URL) = detect pre/post automatically
+    const okType = !req.params.type || fileModel.TYPES.includes(req.params.type);
     const okExt = [".csv", ".xlsx"].includes(
       path.extname(file.originalname).toLowerCase(),
     );
 
-    // STORY #41: Program and School are required; Year must be one of the choices
-    const { program, school, year } = req.body;
+    // STORY #41: Program and School/site are required; Year and Site type must be one of the choices
+    const { program, school, year, site_type: siteType } = req.body;
     let problem = null;
     if (!okType) problem = "Unknown section.";
     else if (!okExt)
@@ -43,7 +44,9 @@ const upload = multer({
     else if (!fileModel.PROGRAMS.includes(program))
       problem = "Please choose a program.";
     else if (!school || !school.trim())
-      problem = "Please enter the school or university.";
+      problem = "Please enter the school or site name.";
+    else if (siteType && !fileModel.SITE_TYPES.includes(siteType))
+      problem = "Please choose a valid site type.";
     else if (year && !fileModel.YEARS.includes(year))
       problem = "Please choose a valid academic year.";
 
@@ -90,6 +93,9 @@ router.get("/:type(pre|post)", controller.section);
 // receiveFile runs FIRST and reads the file into memory (req.file.buffer).
 // 'surveyFile' must match name="surveyFile" on the file input in the view.
 router.post("/:type(pre|post)/upload", receiveFile, controller.upload);
+
+// POST /files/upload -> same, but works out pre or post from the file itself
+router.post("/upload", receiveFile, controller.upload);
 
 // POST /files/pre/survey.csv/delete -> delete that file, then go back (stories #17, #18)
 // It's POST (not GET) because it changes data.
