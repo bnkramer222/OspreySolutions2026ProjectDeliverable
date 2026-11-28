@@ -12,6 +12,8 @@ router.post('/logout', controller.logout);
 
 router.post('/change-password', requireAuth, controller.changePassword);
 router.post('/delete', requireAuth, controller.deleteAccount);
+router.post('/approve/:id(\\d+)', requireAuth, controller.approveUser);
+router.post('/deny/:id(\\d+)', requireAuth, controller.denyUser);
 router.get('/forgot', controller.showForgot);
 router.post('/forgot', controller.requestReset);
 module.exports = router;
