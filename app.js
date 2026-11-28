@@ -16,7 +16,7 @@ const isProduction = process.env.NODE_ENV === "production";
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.set("trust proxy", 1); // Vercel sits in front of the app; needed for secure cookies
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Remembers who is logged in (lasts 8 hours).
@@ -40,9 +40,11 @@ app.use(
   }),
 );
 
-// Makes the logged-in user available in every view as "user"
+// Makes the logged-in user available in every view as "user",
+// and which menu item to highlight as "section" (dashboard, files, reports...)
 app.use((req, res, next) => {
   res.locals.user = req.session.user || null;
+  res.locals.section = req.path.split("/")[1] || "dashboard";
   next();
 });
 
