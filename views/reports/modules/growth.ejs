@@ -1,0 +1,10 @@
+<% if (!s.matched) { %><p class="muted">No students took both surveys with the current filters, so growth can't be measured yet.</p><% } else { %>
+  <div class="kpis" style="margin-bottom:16px">
+    <div class="kpi"><div class="kpi-label">Improved on most questions</div><div class="kpi-value"><%= fmt.pct(s.overall) %></div><div class="kpi-note">of <%= s.matched %> students who took both surveys</div></div>
+  </div>
+  <h3 style="margin-bottom:8px">Share of students who improved</h3>
+  <%- include('../partials/bars', { series: [{ name: '', color: 'var(--post)' }], max: 100, ticks: [0, 25, 50, 75, 100], tickText: (t) => t + '%',
+        ariaLabel: 'Percent of matched students who improved on each question',
+        items: s.items.map((i) => ({ label: i.q.label, values: [i.upPct], text: [fmt.pct(i.upPct) + ' (' + i.up + ' of ' + i.n + ')'] })) }) %>
+  <p class="note">For Yes/No questions, "improved" means the answer changed from No to Yes.</p>
+<% } %>
