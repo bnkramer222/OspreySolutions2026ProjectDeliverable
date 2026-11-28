@@ -18,6 +18,9 @@
   const groups = {};
   fieldChoices.forEach((f) => (groups[f.group] = groups[f.group] || []).push(f));
   const fmtDate = (d) => d || '—';
+  // AI and saved fixes first (they can be unticked), then rule fixes by how often they happened
+  const order = { ai: 0, saved: 1, admin: 1, rule: 2 };
+  const changes = [...result.changes].sort((a, b) => (order[a.source] ?? 2) - (order[b.source] ?? 2) || b.count - a.count);
 %>
 <div class="page">
   <div class="page-head">
@@ -42,7 +45,7 @@
     <div class="kpi"><div class="kpi-label">Rows read</div><div class="kpi-value"><%= result.stats.rowsRead %></div><div class="kpi-note">after the header row</div></div>
     <div class="kpi"><div class="kpi-label">Ready to import</div><div class="kpi-value"><%= result.stats.rowsReady %></div><div class="kpi-note"><%= result.stats.withId %> with a student ID</div></div>
     <div class="kpi"><div class="kpi-label">Values cleaned</div><div class="kpi-value"><%= result.changes.reduce((n, c) => n + c.count, 0) %></div><div class="kpi-note"><%= result.changes.length %> kinds of fixes</div></div>
-    <div class="kpi"><div class="kpi-label">Problems</div><div class="kpi-value"><%= result.issueCount %></div><div class="kpi-note"><%= errors %> rows skipped · <%= removedTotal %> junk rows removed</div></div>
+    <div class="kpi"><div class="kpi-label">Problems</div><div class="kpi-value"><%= result.issueCount %></div><div class="kpi-note"><%= errors %> row<%= errors === 1 ? '' : 's' %> skipped · <%= removedTotal %> junk rows removed</div></div>
   </div>
 
   <form method="POST" action="/files/review/<%= file.id %>" class="stack" style="gap:24px">
@@ -54,7 +57,7 @@
         <table class="table">
           <thead><tr><th>Column in file</th><th>Sample values</th><th>Read as</th><th>Why</th></tr></thead>
           <tbody>
-            <% result.columns.forEach((c) => { const s = sourceBadge[c.source] || ['rule', c.source]; %>
+            <% result.columns.forEach((c) => { const s = c.note ? ['rule', 'Free text'] : sourceBadge[c.source] || ['rule', c.source]; %>
               <tr>
                 <td><strong><%= c.header %></strong><% if (c.note) { %><div class="tiny muted"><%= c.note %></div><% } %></td>
                 <td><div class="chip-list"><% if (c.field === 'pii') { %><span class="chip">hidden</span><% } else { c.samples.slice(0, 3).forEach((v) => { %><span class="chip"><%= String(v).slice(0, 24) %></span><% }) } %></div></td>
@@ -90,7 +93,7 @@
           <table class="table">
             <thead><tr><th>Field</th><th>Before</th><th></th><th>After</th><th class="num">Rows</th><th>Source</th><th>Keep</th></tr></thead>
             <tbody>
-              <% result.changes.forEach((c, i) => { const s = sourceBadge[c.source] || ['rule', c.source]; const isRejected = rejected.has(c.id); %>
+              <% changes.forEach((c, i) => { const s = sourceBadge[c.source] || ['rule', c.source]; const isRejected = rejected.has(c.id); %>
                 <tr <%- i >= 25 ? 'class="more-row" hidden' : '' %>>
                   <td class="small"><%= c.field %></td>
                   <td><span class="change-from"><%= c.from %></span></td>
