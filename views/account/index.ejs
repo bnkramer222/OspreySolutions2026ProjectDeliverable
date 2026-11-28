@@ -10,6 +10,24 @@
   <% if (notice) { %><div class="alert alert-ok" role="status"><%= notice %></div><% } %>
   <% if (error) { %><div class="alert alert-err" role="alert"><%= error %></div><% } %>
 
+  <% if (pending.length) { %>
+    <section class="card" style="border-left:6px solid var(--yellow)">
+      <div class="card-head"><div><h2>Waiting for approval</h2><p>Only approve people from Planned to A.T. or your team. Approved accounts can see all survey data.</p></div></div>
+      <ul class="stack" style="list-style:none;padding:0;margin:0">
+        <% pending.forEach((a) => { %>
+          <li class="row" style="justify-content:space-between">
+            <div class="row"><span class="avatar" aria-hidden="true"><%= (a.firstName || a.name).charAt(0).toUpperCase() %></span>
+              <div><strong><%= a.name %></strong><div class="small muted"><%= a.email %> · signed up <%= new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %></div></div></div>
+            <div class="row">
+              <form method="POST" action="/account/approve/<%= a.id %>"><button class="btn btn-sm" type="submit">Approve</button></form>
+              <form method="POST" action="/account/deny/<%= a.id %>" onsubmit="return confirm('Remove this sign-up request?');"><button class="btn btn-ghost btn-sm" type="submit">Deny</button></form>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
+    </section>
+  <% } %>
+
   <div class="grid grid-2">
     <section class="card">
       <div class="card-head"><div><h2>Change password</h2><p>You'll sign in again afterwards.</p></div></div>

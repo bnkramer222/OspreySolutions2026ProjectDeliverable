@@ -3,7 +3,7 @@
 <div class="auth-page">
   <form class="auth-card" action="/account/register" method="POST">
     <h1>Create an account</h1>
-    <p class="auth-sub">For Planned to A.T. staff</p>
+    <p class="auth-sub">For Planned to A.T. staff. A staff member approves new accounts before they can sign in.</p>
     <% if (error) { %><div class="alert alert-err" role="alert"><%= error %></div><% } %>
     <div class="form-grid">
       <label class="field">First name<input type="text" name="firstName" value="<%= firstName %>" autocomplete="given-name" required autofocus></label>

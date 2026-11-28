@@ -17,6 +17,7 @@ exports.index = async (req, res, next) => {
     res.render("account/index", {
       title: "Account",
       accounts: await accountModel.getAll(),
+      pending: await accountModel.getPending(),
       notice: req.query.notice || null,
       error: req.query.error || null,
     });
@@ -44,6 +45,14 @@ exports.login = async (req, res, next) => {
       return res.render("account/login", {
         title: "Log In",
         error: "Wrong email or password.",
+        email,
+        notice: null,
+      });
+    }
+    if (!user.approved) {
+      return res.render("account/login", {
+        title: "Log In",
+        error: "Your account is waiting for approval. A Planned to A.T. staff member needs to approve it before you can sign in.",
         email,
         notice: null,
       });
@@ -79,11 +88,33 @@ exports.register = async (req, res, next) => {
     if (await accountModel.findByEmail(email))
       return showError("An account with that email already exists.");
 
-    req.session.user = await accountModel.create({ firstName, lastName, email, password });
+    const user = await accountModel.create({ firstName, lastName, email, password });
+    if (!user.approved) {
+      return res.redirect("/account/login?notice=" + encodeURIComponent("Account created. A Planned to A.T. staff member needs to approve it before you can sign in."));
+    }
+    req.session.user = user; // the very first account is approved right away
     saveAndRedirect(req, res, next, "/dashboard");
   } catch (err) {
     // Two sign-ups with the same email at the same moment: the database blocks the second one
     if (err.code === "23505") return showError("An account with that email already exists.");
+    next(err);
+  }
+};
+
+// POST /account/approve/12 and /account/deny/12 - handle a waiting sign-up
+exports.approveUser = async (req, res, next) => {
+  try {
+    await accountModel.approve(Number(req.params.id));
+    backToAccount(res, "notice", "Account approved. They can sign in now.");
+  } catch (err) {
+    next(err);
+  }
+};
+exports.denyUser = async (req, res, next) => {
+  try {
+    await accountModel.deny(Number(req.params.id));
+    backToAccount(res, "notice", "Sign-up request removed.");
+  } catch (err) {
     next(err);
   }
 };

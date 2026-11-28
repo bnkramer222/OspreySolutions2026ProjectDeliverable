@@ -1,5 +1,5 @@
-// Only lets logged-in users through; everyone else goes to the login page
+// Only lets signed-in, approved users through; everyone else goes to the login page
 module.exports = (req, res, next) => {
-  if (req.session.user) return next();
+  if (req.session.user && req.session.user.approved !== false) return next();
   res.redirect("/account/login");
 };
