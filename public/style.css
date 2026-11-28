@@ -145,6 +145,7 @@ main { min-height: calc(100vh - 140px); }
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #efebe7; color: var(--ink); }
 .badge-pre { background: #eceff1; color: #3f4a50; }
 .badge-post { background: var(--teal-50); color: var(--teal-dark); }
+.badge-general { background: #f6ede4; color: #7a4a1f; }
 .badge-ai { background: #efe7fb; color: #5a3a8c; }
 .badge-rule { background: #eceff1; color: #3f4a50; }
 .badge-saved { background: var(--ok-50); color: var(--ok); }

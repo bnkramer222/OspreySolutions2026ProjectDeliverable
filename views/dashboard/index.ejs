@@ -14,17 +14,18 @@
     </div>
   </div>
 
+  <% if (o.pending_users) { %><div class="alert alert-warn"><strong><%= o.pending_users %> sign-up<%= o.pending_users === 1 ? ' is' : 's are' %> waiting for approval.</strong> <a href="/account">Review on the Account page →</a></div><% } %>
   <% if (o.waiting) { %><div class="alert alert-warn"><strong><%= o.waiting %> file<%= o.waiting === 1 ? ' is' : 's are' %> waiting for review.</strong> They aren't counted until approved. <a href="/files">Review now →</a></div><% } %>
   <% if (o.not_imported) { %><div class="alert alert-info"><%= o.not_imported %> older file<%= o.not_imported === 1 ? " hasn't" : "s haven't" %> been imported into the database yet. Use <strong>Import rows</strong> on the <a href="/files">Survey files</a> page.</div><% } %>
 
   <div class="kpis">
     <div class="kpi"><div class="kpi-label">Students reached</div><div class="kpi-value"><%= fmt.int(o.participants) %></div><div class="kpi-note">unique student IDs</div></div>
     <div class="kpi"><div class="kpi-label">Completed both surveys</div><div class="kpi-value"><%= fmt.int(o.matched) %></div><div class="kpi-note"><%= o.participants ? fmt.pct(o.matched / o.participants * 100) : '—' %> of students</div></div>
-    <div class="kpi"><div class="kpi-label">Survey responses</div><div class="kpi-value"><%= fmt.int(o.pre_responses + o.post_responses) %></div><div class="kpi-note"><%= fmt.int(o.pre_responses) %> pre · <%= fmt.int(o.post_responses) %> post</div></div>
+    <div class="kpi"><div class="kpi-label">Survey responses</div><div class="kpi-value"><%= fmt.int(o.pre_responses + o.post_responses + o.general_responses) %></div><div class="kpi-note"><%= fmt.int(o.pre_responses) %> pre · <%= fmt.int(o.post_responses) %> post<%= o.general_responses ? ' · ' + fmt.int(o.general_responses) + ' general' : '' %></div></div>
     <div class="kpi"><div class="kpi-label">Schools & sites</div><div class="kpi-value"><%= fmt.int(o.schools) %></div><div class="kpi-note"><a href="/dashboard/schools">See all sites →</a></div></div>
   </div>
 
-  <% if (!o.pre_responses && !o.post_responses) { %>
+  <% if (!o.pre_responses && !o.post_responses && !o.general_responses) { %>
     <section class="card empty"><strong>No survey data yet</strong>Upload a pre-survey and a post-survey file to see results here.<div style="margin-top:14px"><a class="btn" href="/files">Upload a file</a></div></section>
   <% } else { %>
     <div class="grid grid-2">
@@ -51,7 +52,7 @@
       <div class="table-wrap"><table class="table">
         <thead><tr><th>File</th><th>Survey</th><th>School / site</th><th>Program</th><th class="num">Responses</th><th>Imported</th><th>By</th></tr></thead>
         <tbody><% recent.forEach((f) => { %>
-          <tr><td><%= f.name %></td><td><span class="badge badge-<%= f.type %>"><%= f.type === 'pre' ? 'Pre' : 'Post' %></span></td><td><%= f.school || '—' %></td><td><%= f.program || '—' %></td>
+          <tr><td><%= f.name %></td><td><span class="badge badge-<%= f.type %>"><%= { pre: 'Pre', post: 'Post', general: 'General' }[f.type] %></span></td><td><%= f.school || '—' %></td><td><%= f.program || '—' %></td>
             <td class="num"><%= f.row_count %></td><td class="nowrap small"><%= f.imported_at ? new Date(f.imported_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—' %></td><td class="small"><%= f.uploaded_by || '—' %></td></tr>
         <% }) %></tbody>
       </table></div>

@@ -66,8 +66,9 @@ async function prepare(fileId, overrides = {}) {
   }
   // File has its own Pre/Post column: the file goes in whichever section most rows belong to
   if (file.type_detection && file.type_detection.source === "column") {
-    const post = result.rows.filter((r) => r.survey_type === "post").length;
-    const majority = post > result.rows.length / 2 ? "post" : "pre";
+    const counts = { pre: 0, post: 0, general: 0 };
+    result.rows.forEach((r) => counts[r.survey_type]++);
+    const majority = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
     if (majority !== file.type && file.status === "new") await moveSection(fileId, majority).catch(() => {});
   }
   await db.run("UPDATE files SET staging = $1 WHERE id = $2", [JSON.stringify({ result, overrides }), fileId]);
@@ -81,7 +82,7 @@ async function moveSection(fileId, type, detection) {
   if (!file || file.type === type) return;
   if (file.status !== "new") throw new Error("An already-imported file can't be moved. Delete it and upload it again.");
   const clash = await db.get("SELECT id FROM files WHERE type = $1 AND name = $2", [type, file.name]);
-  if (clash) throw new Error(`The ${type === "pre" ? "Pre" : "Post"}-Survey section already has a file called "${file.name}". Rename one of them.`);
+  if (clash) throw new Error(`The ${{ pre: "Pre-Survey", post: "Post-Survey", general: "General survey" }[type]} section already has a file called "${file.name}". Rename one of them.`);
   await db.run("UPDATE files SET type = $2, type_detection = COALESCE($3, type_detection) WHERE id = $1", [fileId, type, detection ? JSON.stringify(detection) : null]);
 }
 
@@ -91,7 +92,7 @@ async function approve(fileId, userId) {
   const file = await db.get("SELECT id, type, staging, pending_tags, status, type_detection FROM files WHERE id = $1", [fileId]);
   if (!file || !file.staging) throw new Error("Nothing is waiting for review for this file.");
   if (file.type_detection && file.type_detection.source === "unknown")
-    throw new Error("Choose whether this is a pre- or post-survey before importing.");
+    throw new Error("Choose whether this is a pre-, post- or general survey before importing.");
   const { result, overrides } = file.staging;
   const rows = result.rows.map((r) => ({
     survey_type: r.survey_type,
@@ -183,11 +184,13 @@ async function overview() {
     SELECT
       (SELECT count(*) FROM survey_responses WHERE survey_type = 'pre')::int  AS pre_responses,
       (SELECT count(*) FROM survey_responses WHERE survey_type = 'post')::int AS post_responses,
+      (SELECT count(*) FROM survey_responses WHERE survey_type = 'general')::int AS general_responses,
       (SELECT count(DISTINCT participant_id) FROM survey_responses)::int      AS participants,
       (SELECT count(*) FROM matched_responses)::int                           AS matched,
       (SELECT count(DISTINCT school) FROM survey_responses)::int              AS schools,
       (SELECT count(*) FROM files WHERE staging IS NOT NULL)::int             AS waiting,
-      (SELECT count(*) FROM files WHERE status = 'stored' AND staging IS NULL)::int AS not_imported`);
+      (SELECT count(*) FROM files WHERE status = 'stored' AND staging IS NULL)::int AS not_imported,
+      (SELECT count(*) FROM users WHERE NOT approved)::int                    AS pending_users`);
 }
 
 async function recentImports(limit = 6) {
@@ -204,16 +207,73 @@ async function schools() {
     SELECT school, max(location) AS location, max(site_type) AS site_type,
            count(*) FILTER (WHERE survey_type = 'pre')::int  AS pre_count,
            count(*) FILTER (WHERE survey_type = 'post')::int AS post_count,
+           count(*) FILTER (WHERE survey_type = 'general')::int AS general_count,
            array_agg(DISTINCT program) FILTER (WHERE program IS NOT NULL) AS programs
     FROM survey_responses WHERE school IS NOT NULL
     GROUP BY school ORDER BY school`);
+}
+
+// ---------- Pre/post status (story: who still needs a post-survey) ----------
+// One row per site + program + cohort that has pre-surveys.
+// expectsPost is false when every pre file for the group is marked
+// "no post-survey planned", so those students aren't counted as missing.
+async function completion() {
+  const rows = await db.all(`
+    SELECT r.survey_type, r.participant_id, r.school, r.program, r.cohort, f.expects_post
+    FROM survey_responses r JOIN files f ON f.id = r.file_id
+    WHERE r.survey_type IN ('pre', 'post')`);
+  const groups = new Map();
+  const keyOf = (r) => [r.school || "", r.program || "", r.cohort || ""].join("|");
+  for (const r of rows) {
+    const k = keyOf(r);
+    if (!groups.has(k)) groups.set(k, { school: r.school, program: r.program, cohort: r.cohort, pre: new Set(), post: new Set(), noId: 0, expectsPost: false, hasPre: false });
+    const g = groups.get(k);
+    if (r.survey_type === "pre") {
+      g.hasPre = true;
+      if (r.expects_post) g.expectsPost = true;
+    }
+    if (!r.participant_id) g.noId++;
+    else g[r.survey_type].add(r.participant_id);
+  }
+  return [...groups.values()]
+    .map((g) => {
+      const matched = [...g.pre].filter((id) => g.post.has(id)).length;
+      const preOnly = [...g.pre].filter((id) => !g.post.has(id));
+      const postOnly = [...g.post].filter((id) => !g.pre.has(id)).length;
+      let status = "complete";
+      if (!g.hasPre) status = "post-only";
+      else if (!g.expectsPost) status = "no-post";
+      else if (!g.post.size) status = "waiting";
+      else if (preOnly.length) status = "missing";
+      return { school: g.school, program: g.program, cohort: g.cohort, pre: g.pre.size, post: g.post.size, matched, preOnly, postOnly, noId: g.noId, expectsPost: g.expectsPost, status };
+    })
+    .sort((a, b) => (a.school || "").localeCompare(b.school || "") || (a.cohort || "").localeCompare(b.cohort || ""));
+}
+
+// ---------- Question manager ----------
+// Every question with how many responses answered it
+async function questions() {
+  return db.all(`
+    SELECT q.key, q.label, q.kind, q.max_value::float AS max_value, q.topic, q.hidden,
+           (SELECT count(*) FROM survey_responses r WHERE r.answers ? q.key)::int AS answered
+    FROM survey_questions q ORDER BY q.hidden, q.topic NULLS LAST, q.label`);
+}
+
+// Renames a question, sets its topic, or hides it from reports.
+// (The kind can't change: the stored answers are already Yes/No, ratings or scores.)
+async function updateQuestion(key, { label, topic, hidden }) {
+  const cleanLabel = String(label || "").trim().slice(0, 80);
+  if (!cleanLabel) return;
+  await db.run("UPDATE survey_questions SET label = $2, topic = $3, hidden = $4 WHERE key = $1", [
+    key, cleanLabel, String(topic || "").trim().slice(0, 40) || null, Boolean(hidden),
+  ]);
 }
 
 // Paged list of individual responses for the data browser
 async function responses({ type, search, school, page = 1, perPage = 50 }) {
   const where = [];
   const params = [];
-  if (type === "pre" || type === "post") where.push(`survey_type = $${params.push(type)}`);
+  if (["pre", "post", "general"].includes(type)) where.push(`survey_type = $${params.push(type)}`);
   if (school) where.push(`school = $${params.push(school)}`);
   if (search) {
     params.push(`%${search}%`);
@@ -229,4 +289,4 @@ async function responses({ type, search, school, page = 1, perPage = 50 }) {
   return { total, rows, page: Math.max(1, page), pages: Math.max(1, Math.ceil(total / perPage)) };
 }
 
-module.exports = { prepare, approve, discard, moveSection, detectSurveyType: (buffer, name) => scrub.detectSurveyType(buffer, name, ai), getStaged, overview, recentImports, schools, responses, aiUsage: ai.usageToday, FIELDS: F.ALL_FIELDS };
+module.exports = { questions, updateQuestion, completion, prepare, approve, discard, moveSection, detectSurveyType: (buffer, name) => scrub.detectSurveyType(buffer, name, ai), getStaged, overview, recentImports, schools, responses, aiUsage: ai.usageToday, FIELDS: F.ALL_FIELDS };

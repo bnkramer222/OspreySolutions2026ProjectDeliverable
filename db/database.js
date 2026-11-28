@@ -15,9 +15,11 @@
 //   files             -> one row per uploaded survey file + its tags
 //                        and its import status (File Management)
 //   survey_responses  -> ONE ROW PER STUDENT PER SURVEY, read out of the
-//                        files by the data scrubber. Pre and post rows
-//                        live in the same table, kept apart by
-//                        survey_type ('pre' / 'post').
+//                        files by the data scrubber. Pre, post and general
+//                        rows live in the same table, kept apart by
+//                        survey_type ('pre' / 'post' / 'general').
+//                        General = a one-off survey that isn't part of a
+//                        before/after pair (event feedback, check-ins...)
 //   survey_questions  -> every question the system knows about
 //                        (key, label, kind: scale / yesno / score / number)
 //   scrub_mappings    -> fixes the scrubber has learned and an admin
@@ -28,7 +30,8 @@
 // VIEWS (read-only "saved queries" used by reports and the dashboard)
 //   pre_responses      -> only pre-survey rows
 //   post_responses     -> only post-survey rows
-//   all_responses      -> pre + post together
+//   general_responses  -> only general-survey rows
+//   all_responses      -> everything together
 //   matched_responses  -> one row per student who took BOTH surveys
 //                         (same participant_id, program and cohort)
 //
@@ -49,10 +52,13 @@ const SCHEMA = `
   );
   ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name  TEXT;
+  -- New sign-ups wait until a staff member approves them (accounts that
+  -- existed before this column was added stay approved)
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT true;
 
   CREATE TABLE IF NOT EXISTS files (
     id          SERIAL  PRIMARY KEY,
-    type        TEXT    NOT NULL CHECK (type IN ('pre', 'post')), -- which section
+    type        TEXT    NOT NULL,             -- which section: pre / post / general
     name        TEXT    NOT NULL,             -- file name, e.g. survey.csv
     size        INTEGER NOT NULL DEFAULT 0,   -- in bytes
     content     BYTEA,                        -- the original file (Vercel can't save files to disk)
@@ -76,7 +82,13 @@ const SCHEMA = `
   ALTER TABLE files ADD COLUMN IF NOT EXISTS pending_content BYTEA;   -- re-uploaded file waiting for review
   ALTER TABLE files ADD COLUMN IF NOT EXISTS pending_tags    JSONB;
   ALTER TABLE files ADD COLUMN IF NOT EXISTS site_type       TEXT;    -- High school, Seminar / workshop...
-  ALTER TABLE files ADD COLUMN IF NOT EXISTS type_detection  JSONB;   -- how pre/post was decided: { source, detail, confirmed }
+  ALTER TABLE files ADD COLUMN IF NOT EXISTS type_detection  JSONB;   -- how pre/post was decided: { source, detail }
+  -- false = a pre-survey with no post-survey planned, so its students
+  -- aren't counted as "missing" a post-survey
+  ALTER TABLE files ADD COLUMN IF NOT EXISTS expects_post    BOOLEAN NOT NULL DEFAULT true;
+  -- Allowed survey types (re-applied on every start so older databases get "general")
+  ALTER TABLE files DROP CONSTRAINT IF EXISTS files_type_check;
+  ALTER TABLE files ADD CONSTRAINT files_type_check CHECK (type IN ('pre', 'post', 'general'));
   ALTER TABLE files ADD COLUMN IF NOT EXISTS scrub_report JSONB;      -- summary kept after import
   ALTER TABLE files ADD COLUMN IF NOT EXISTS imported_at TIMESTAMPTZ;
   ALTER TABLE files ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
@@ -84,7 +96,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS survey_responses (
     id             SERIAL PRIMARY KEY,
     file_id        INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    survey_type    TEXT    NOT NULL CHECK (survey_type IN ('pre', 'post')),
+    survey_type    TEXT    NOT NULL,          -- pre / post / general
     participant_id TEXT,                      -- student ID (never names)
     program        TEXT,
     school         TEXT,                      -- school or site name
@@ -97,6 +109,8 @@ const SCHEMA = `
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS site_type TEXT; -- High school, Seminar / workshop...
+  ALTER TABLE survey_responses DROP CONSTRAINT IF EXISTS survey_responses_survey_type_check;
+  ALTER TABLE survey_responses ADD CONSTRAINT survey_responses_survey_type_check CHECK (survey_type IN ('pre', 'post', 'general'));
   CREATE INDEX IF NOT EXISTS survey_responses_type_idx ON survey_responses (survey_type);
   CREATE INDEX IF NOT EXISTS survey_responses_participant_idx ON survey_responses (participant_id);
   CREATE INDEX IF NOT EXISTS survey_responses_school_idx ON survey_responses (school);
@@ -110,6 +124,7 @@ const SCHEMA = `
     topic      TEXT,                          -- Budgeting, Saving, Credit...
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  ALTER TABLE survey_questions ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT false; -- left out of reports
 
   CREATE TABLE IF NOT EXISTS scrub_mappings (
     id         SERIAL PRIMARY KEY,
@@ -129,14 +144,15 @@ const SCHEMA = `
   );
 
   -- Views are rebuilt on every start so new columns show up in them
-  DROP VIEW IF EXISTS matched_responses, pre_responses, post_responses, all_responses;
+  DROP VIEW IF EXISTS matched_responses, pre_responses, post_responses, general_responses, all_responses;
 
   CREATE VIEW all_responses AS
-    SELECT r.*, f.name AS file_name
+    SELECT r.*, f.name AS file_name, f.expects_post
     FROM survey_responses r JOIN files f ON f.id = r.file_id;
 
   CREATE VIEW pre_responses  AS SELECT * FROM all_responses WHERE survey_type = 'pre';
   CREATE VIEW post_responses AS SELECT * FROM all_responses WHERE survey_type = 'post';
+  CREATE VIEW general_responses AS SELECT * FROM all_responses WHERE survey_type = 'general';
 
   -- One row per student who answered both surveys in the same program + cohort.
   -- DISTINCT ON keeps the latest response if a student appears twice.
