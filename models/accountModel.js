@@ -4,71 +4,69 @@
 const bcrypt = require("bcryptjs");
 const db = require("../db/database");
 
-// Columns renamed so the rest of the app sees the same field names as before
-const COLUMNS = `id, name, email, password_hash AS "passwordHash", created_at AS "createdAt"`;
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
-// Never send the password hash to a view
-const publicInfo = ({ id, name, email, createdAt }) => ({
-  id,
-  name,
-  email,
-  createdAt,
-});
-if (fs.existsSync(legacyPath)) {
-  try {
-    const legacy = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
-    if (Array.isArray(legacy)) migration(legacy);
-  } catch (err) {
-    // Do not start with a partial migration if the legacy file is malformed.
-    throw new Error(`Could not import legacy users.json: ${err.message}`);
-  }
-}
-
-const publicInfo = (row) => row ? ({
-  id: row.id,
-  firstName: row.first_name,
-  lastName: row.last_name,
-  name: `${row.first_name} ${row.last_name}`.trim(),
-  email: row.email,
-  createdAt: row.created_at,
-}) : null;
-const byEmail = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE');
-const byId = db.prepare('SELECT * FROM users WHERE id = ?');
-const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+// Turns a database row into the account object the app uses.
+// Never includes the password hash.
+const publicInfo = (row) =>
+  row
+    ? {
+        id: row.id,
+        firstName: row.first_name || row.name.split(" ")[0] || "",
+        lastName: row.last_name || row.name.split(" ").slice(1).join(" "),
+        name: row.name,
+        email: row.email,
+        createdAt: row.created_at,
+      }
+    : null;
 
 module.exports = {
   // All accounts (without passwords)
   async getAll() {
-    const users = await db.all(
-      `SELECT ${COLUMNS} FROM users ORDER BY created_at`,
-    );
-    return users.map(publicInfo);
+    const rows = await db.all("SELECT * FROM users ORDER BY created_at");
+    return rows.map(publicInfo);
   },
 
-  // Full account (including passwordHash) or undefined
+  // Account for this email, or null
   async findByEmail(email) {
-    return db.get(`SELECT ${COLUMNS} FROM users WHERE email = $1`, [
-      email.trim().toLowerCase(),
-    ]);
+    return publicInfo(
+      await db.get("SELECT * FROM users WHERE email = $1", [normalizeEmail(email)]),
+    );
   },
 
   // Save a new account with a hashed password
-  async create({ name, email, password }) {
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await db.get(
-      `INSERT INTO users (name, email, password_hash)
-       VALUES ($1, $2, $3)
-       RETURNING ${COLUMNS}`,
-      [name.trim(), email.trim().toLowerCase(), passwordHash],
+  async create({ firstName, lastName, email, password }) {
+    const first = String(firstName).trim();
+    const last = String(lastName).trim();
+    const row = await db.get(
+      `INSERT INTO users (name, first_name, last_name, email, password_hash)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [`${first} ${last}`.trim(), first, last, normalizeEmail(email), await bcrypt.hash(password, 10)],
     );
-    return publicInfo(user);
+    return publicInfo(row);
   },
 
   // Returns the account if the email + password match, otherwise null
   async checkLogin(email, password) {
-    const user = await this.findByEmail(email);
-    if (!user || !(await bcrypt.compare(password, user.passwordHash)))
-      return null;
-    return publicInfo(user);
+    const row = await db.get("SELECT * FROM users WHERE email = $1", [normalizeEmail(email)]);
+    if (!row || !(await bcrypt.compare(password, row.password_hash))) return null;
+    return publicInfo(row);
+  },
+
+  // true if this is the account's current password
+  async verifyPassword(id, password) {
+    const row = await db.get("SELECT password_hash FROM users WHERE id = $1", [id]);
+    return Boolean(row) && bcrypt.compare(password, row.password_hash);
+  },
+
+  async changePassword(id, newPassword) {
+    await db.run("UPDATE users SET password_hash = $1 WHERE id = $2", [
+      await bcrypt.hash(newPassword, 10),
+      id,
+    ]);
+  },
+
+  async deleteAccount(id) {
+    await db.run("DELETE FROM users WHERE id = $1", [id]);
   },
 };
