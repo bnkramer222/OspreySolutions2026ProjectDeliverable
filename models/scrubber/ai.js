@@ -17,7 +17,7 @@
 const db = require("../../db/database");
 
 const URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const MODEL = (process.env.GROQ_MODEL || "").trim() || "llama-3.3-70b-versatile";
 
 const available = () => Boolean(process.env.GROQ_API_KEY);
 
@@ -58,7 +58,16 @@ async function askJson(system, user) {
     });
     if (response.status === 429)
       return { ok: false, status: "limit", message: "The free AI limit is used up for now. Match the remaining items by hand or try again later." };
-    if (!response.ok) return { ok: false, status: "error", message: `AI service error (${response.status}).` };
+    if (!response.ok) {
+      // Show Groq's own reason (wrong model name, bad key...) so it can be fixed
+      let reason = "";
+      try {
+        const body = await response.json();
+        reason = (body.error && (body.error.message || body.error.code)) || "";
+      } catch (e) { /* not JSON */ }
+      console.error(`Groq error ${response.status} (model ${MODEL}): ${reason}`);
+      return { ok: false, status: "error", message: `AI service error (${response.status}${reason ? `: ${reason.slice(0, 160)}` : ""}).` };
+    }
     const body = await response.json();
     await recordUsage(body.usage && body.usage.total_tokens);
     return { ok: true, data: JSON.parse(body.choices[0].message.content) };
